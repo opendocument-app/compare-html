@@ -16,7 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 def to_url(path):
     if path.is_file():
-        return path.as_uri()
+        return path.resolve().as_uri()
     return path
 
 
