@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
 import sys
 import argparse
 import json
 import threading
 import filecmp
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 from htmlcmp.html_render_diff import get_browser, html_render_diff
@@ -34,10 +34,10 @@ def compare_html(a, b, browser=None, diff_output=None):
     diff, (image_a, image_b) = html_render_diff(a, b, browser=browser)
     result = True if diff.getbbox() is None else False
     if diff_output is not None and not result:
-        os.makedirs(diff_output, exist_ok=True)
-        image_a.save(os.path.join(diff_output, "a.png"))
-        image_b.save(os.path.join(diff_output, "b.png"))
-        diff.save(os.path.join(diff_output, "diff.png"))
+        diff_output.mkdir(parents=True, exist_ok=True)
+        image_a.save(diff_output / "a.png")
+        image_b.save(diff_output / "b.png")
+        diff.save(diff_output / "diff.png")
     return result
 
 
@@ -68,24 +68,14 @@ def submit_compare_dirs(a, b, executor, diff_output=None, **kwargs):
         "right_dirs_missing": [],
     }
 
-    left = sorted(os.listdir(a))
-    right = sorted(os.listdir(b))
+    left = sorted(a.iterdir())
+    right = sorted(b.iterdir())
 
     left_files = sorted(
-        [
-            name
-            for name in left
-            if os.path.isfile(os.path.join(a, name))
-            and comparable_file(os.path.join(a, name))
-        ]
+        [name for name in left if (a / name).is_file() and comparable_file(a / name)]
     )
     right_files = sorted(
-        [
-            name
-            for name in right
-            if os.path.isfile(os.path.join(b, name))
-            and comparable_file(os.path.join(b, name))
-        ]
+        [name for name in right if (b / name).is_file() and comparable_file(b / name)]
     )
     common_files = [name for name in left_files if name in right_files]
 
@@ -96,11 +86,9 @@ def submit_compare_dirs(a, b, executor, diff_output=None, **kwargs):
     for name in common_files:
         future = executor.submit(
             compare,
-            os.path.join(a, name),
-            os.path.join(b, name),
-            diff_output=(
-                None if diff_output is None else os.path.join(diff_output, name)
-            ),
+            a / name,
+            b / name,
+            diff_output=(None if diff_output is None else diff_output / name),
         )
         results["common_files"].append((name, future))
 
@@ -111,20 +99,16 @@ def submit_compare_dirs(a, b, executor, diff_output=None, **kwargs):
         name for name in left_files if name not in right_files
     ]
 
-    left_dirs = sorted([name for name in left if os.path.isdir(os.path.join(a, name))])
-    right_dirs = sorted(
-        [name for name in right if os.path.isdir(os.path.join(b, name))]
-    )
+    left_dirs = sorted([name for name in left if (a / name).is_dir()])
+    right_dirs = sorted([name for name in right if (b / name).is_dir()])
     common_dirs = [path for path in left_dirs if path in right_dirs]
 
     for name in common_dirs:
         sub_results = submit_compare_dirs(
-            os.path.join(a, name),
-            os.path.join(b, name),
+            a / name,
+            b / name,
             executor=executor,
-            diff_output=(
-                None if diff_output is None else os.path.join(diff_output, name)
-            ),
+            diff_output=(None if diff_output is None else diff_output / name),
             **kwargs,
         )
         results["common_dirs"].append((name, sub_results))
@@ -158,7 +142,7 @@ def print_results(results, a, b, level=0, prefix=""):
             f"{prefix_file}{bcolors.FAIL}missing files left: {left_files_missing} ✘{bcolors.ENDC}"
         )
         result["left_files_missing"].extend(
-            [os.path.join(a, name) for name in results["left_files_missing"]]
+            [a / name for name in results["left_files_missing"]]
         )
     right_files_missing = " ".join(results["right_files_missing"])
     if right_files_missing:
@@ -166,7 +150,7 @@ def print_results(results, a, b, level=0, prefix=""):
             f"{prefix_file}{bcolors.FAIL}missing files right: {right_files_missing} ✘{bcolors.ENDC}"
         )
         result["right_files_missing"].extend(
-            [os.path.join(a, name) for name in results["right_files_missing"]]
+            [a / name for name in results["right_files_missing"]]
         )
 
     for name, future in results["common_files"]:
@@ -175,7 +159,7 @@ def print_results(results, a, b, level=0, prefix=""):
             print(f"{prefix_file}{bcolors.OKGREEN}{name} ✓{bcolors.ENDC}")
         else:
             print(f"{prefix_file}{bcolors.FAIL}{name} ✘{bcolors.ENDC}")
-            result["files_different"].append(os.path.join(a, name))
+            result["files_different"].append(a / name)
 
     left_dirs_missing = " ".join(results["left_dirs_missing"])
     if left_dirs_missing:
@@ -183,7 +167,7 @@ def print_results(results, a, b, level=0, prefix=""):
             f"{prefix_file}{bcolors.FAIL}missing dirs left: {left_dirs_missing} ✘{bcolors.ENDC}"
         )
         result["left_dirs_missing"].extend(
-            [os.path.join(a, name) for name in results["left_dirs_missing"]]
+            [a / name for name in results["left_dirs_missing"]]
         )
     right_dirs_missing = " ".join(results["right_dirs_missing"])
     if right_dirs_missing:
@@ -191,15 +175,15 @@ def print_results(results, a, b, level=0, prefix=""):
             f"{prefix_file}{bcolors.FAIL}missing dirs right: {right_dirs_missing} ✘{bcolors.ENDC}"
         )
         result["right_dirs_missing"].extend(
-            [os.path.join(a, name) for name in results["right_dirs_missing"]]
+            [a / name for name in results["right_dirs_missing"]]
         )
 
     for name, sub_results in results["common_dirs"]:
         print(prefix + "├── " + name)
         sub_result = print_results(
             sub_results,
-            os.path.join(a, name),
-            os.path.join(b, name),
+            a / name,
+            b / name,
             level=level + 1,
             prefix=prefix + "│   ",
         )
@@ -214,12 +198,14 @@ def print_results(results, a, b, level=0, prefix=""):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("a")
-    parser.add_argument("b")
+    parser.add_argument("a", type=Path, help="Path to the first directory")
+    parser.add_argument("b", type=Path, help="Path to the second directory")
     parser.add_argument(
         "--driver", choices=["chrome", "firefox", "phantomjs"], default="firefox"
     )
-    parser.add_argument("--diff-output")
+    parser.add_argument(
+        "--diff-output", type=Path, help="Output directory for diff images"
+    )
     parser.add_argument("--max-workers", type=int, default=1)
     args = parser.parse_args()
 

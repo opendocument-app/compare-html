@@ -76,8 +76,8 @@ def html_render_diff(a, b, browser):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("a", type=Path)
-    parser.add_argument("b", type=Path)
+    parser.add_argument("a", type=Path, help="Path to the first HTML file")
+    parser.add_argument("b", type=Path, help="Path to the second HTML file")
     parser.add_argument(
         "--driver", choices=["chrome", "firefox", "phantomjs"], default="firefox"
     )

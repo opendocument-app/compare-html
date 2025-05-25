@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
 import sys
 import argparse
 import threading
 import io
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from html_render_diff import get_browser, html_render_diff
+
 from compare_output import comparable_file, compare_files
 from flask import Flask, send_from_directory, send_file
 import watchdog.observers
 import watchdog.events
+
+from html_render_diff import get_browser, html_render_diff
 
 
 class Config:
@@ -34,10 +36,8 @@ class Observer:
                 if event.event_type in ["opened"]:
                     return
 
-                if os.path.isfile(event.src_path):
-                    Config.comparator.submit(
-                        os.path.relpath(event.src_path, self._path)
-                    )
+                if event.src_path.is_file():
+                    Config.comparator.submit(event.src_path.relative_to(self._path))
 
         self._observer = watchdog.observers.Observer()
         self._observer.schedule(Handler(Config.path_a), Config.path_a, recursive=True)
@@ -47,20 +47,18 @@ class Observer:
         self._observer.start()
 
         def init_compare(a, b):
-            common_path = os.path.relpath(a, Config.path_a)
+            common_path = a / Config.path_a
 
-            left = sorted(os.listdir(a))
-            right = sorted(os.listdir(b))
+            left = sorted(a.iterdir())
+            right = sorted(b.iterdir())
 
             common = [name for name in left if name in right]
 
             for name in common:
-                if os.path.isfile(os.path.join(a, name)) and comparable_file(
-                    os.path.join(a, name)
-                ):
-                    Config.comparator.submit(os.path.join(common_path, name))
-                elif os.path.isdir(os.path.join(a, name)):
-                    init_compare(os.path.join(a, name), os.path.join(b, name))
+                if (a / name).is_file() and comparable_file(a / name):
+                    Config.comparator.submit(common_path / name)
+                elif (a / name).is_dir():
+                    init_compare(a / name, b / name)
 
         init_compare(Config.path_a, Config.path_b)
 
@@ -100,8 +98,8 @@ class Comparator:
     def compare(self, path):
         browser = getattr(Config.thread_local, "browser", None)
         result = compare_files(
-            os.path.join(Config.path_a, path),
-            os.path.join(Config.path_b, path),
+            Config.path_a / path,
+            Config.path_b / path,
             browser=browser,
         )
         self._result[path] = "same" if result else "different"
@@ -139,34 +137,28 @@ app = Flask("compare")
 @app.route("/")
 def root():
     def print_tree(a, b):
-        common_path = os.path.relpath(a, Config.path_a)
+        common_path = a / Config.path_a
 
-        left = sorted(os.listdir(a))
-        right = sorted(os.listdir(b))
+        left = sorted(a.iterdir())
+        right = sorted(b.iterdir())
 
         left_files = sorted(
             [
                 name
                 for name in left
-                if os.path.isfile(os.path.join(a, name))
-                and comparable_file(os.path.join(a, name))
+                if (a / name).is_file() and comparable_file(a / name)
             ]
         )
         right_files = sorted(
             [
                 name
                 for name in right
-                if os.path.isfile(os.path.join(b, name))
-                and comparable_file(os.path.join(b, name))
+                if (b / name).is_file() and comparable_file(b / name)
             ]
         )
 
-        left_dirs = sorted(
-            [name for name in left if os.path.isdir(os.path.join(a, name))]
-        )
-        right_dirs = sorted(
-            [name for name in right if os.path.isdir(os.path.join(b, name))]
-        )
+        left_dirs = sorted([name for name in left if (a / name).is_dir()])
+        right_dirs = sorted([name for name in right if (b / name).is_dir()])
 
         common_files = [name for name in left_files if name in right_files]
         common_dirs = [name for name in left_dirs if name in right_dirs]
@@ -196,17 +188,15 @@ def root():
 
         for name in common_files:
             if Config.comparator is None:
-                result += f'<li><a href="/compare/{os.path.join(common_path, name)}">{name}</a></li>'
+                result += f'<li><a href="/compare/{common_path / name}">{name}</a></li>'
             else:
-                symbol = Config.comparator.result_symbol(
-                    os.path.join(common_path, name)
-                )
-                css = Config.comparator.result_css(os.path.join(common_path, name))
-                result += f'<li style="{css}"><a style="{css}" href="/compare/{os.path.join(common_path, name)}">{name}</a> {symbol}</li>'
+                symbol = Config.comparator.result_symbol(common_path / name)
+                css = Config.comparator.result_css(common_path / name)
+                result += f'<li style="{css}"><a style="{css}" href="/compare/{common_path / name}">{name}</a> {symbol}</li>'
 
         for name in common_dirs:
             result += f"<li>{name}"
-            result += print_tree(os.path.join(a, name), os.path.join(b, name))
+            result += print_tree(a / name, b / name)
             result += "</li>"
 
         result += "</ul>"
@@ -229,7 +219,7 @@ html,body {{height:100%;margin:0;}}
 </head>
 <body style="display:flex;flex-flow:row;">
 <div style="display:flex;flex:1;flex-flow:column;margin:5px;">
-  <a href="/file/a/{path}">{os.path.join(Config.path_a, path)}</a>
+  <a href="/file/a/{path}">{Config.path_a /path}</a>
   <iframe id="a" src="/file/a/{path}" title="a" frameborder="0" align="left" style="flex:1;"></iframe>
 </div>
 <div style="display:flex;flex:0 0 50px;flex-flow:column;">
@@ -237,7 +227,7 @@ html,body {{height:100%;margin:0;}}
   <img src="/image_diff/{path}" width="50" height="0" style="flex:1;">
 </div>
 <div style="display:flex;flex:1;flex-flow:column;margin:5px;">
-  <a href="/file/b/{path}">{os.path.join(Config.path_b, path)}</a>
+  <a href="/file/b/{path}">{Config.path_b / path}</a>
   <iframe id="b" src="/file/b/{path}" title="b" frameborder="0" align="right" style="flex:1;"></iframe>
 </div>
 <script>
@@ -258,8 +248,8 @@ iframe_b.contentWindow.addEventListener('scroll', function(event) {{
 @app.route("/image_diff/<path:path>")
 def image_diff(path):
     diff, _ = html_render_diff(
-        os.path.join(Config.path_a, path),
-        os.path.join(Config.path_b, path),
+        Config.path_a / path,
+        Config.path_b / path,
         Config.browser,
     )
     tmp = io.BytesIO()
@@ -276,8 +266,8 @@ def file(variant, path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("a")
-    parser.add_argument("b")
+    parser.add_argument("a", type=Path, help="Path to the first directory")
+    parser.add_argument("b", type=Path, help="Path to the second directory")
     parser.add_argument(
         "--driver", choices=["chrome", "firefox", "phantomjs"], default="firefox"
     )
