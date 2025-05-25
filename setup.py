@@ -17,7 +17,12 @@ setup(
     python_requires=">=3.7",
     packages=find_packages("src"),
     package_dir={"": "src"},
-    install_requires=[],
+    install_requires=[
+        "pillow",
+        "selenium",
+        "flask",
+        "watchdog",
+    ],
     extras_require={
         "dev": ["black"],
         "test": ["pytest>=6.0"],
