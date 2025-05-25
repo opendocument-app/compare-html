@@ -53,7 +53,7 @@ ENV OPENSSL_CONF=/etc/ssl
 RUN phantomjs --version
 
 # install python dependencies
-ADD ./* /compare-html
+COPY . /compare-html
 RUN $INSTALL python3 python3-pip && \
     pip config set global.break-system-packages true && \
     pip install /compare-html
