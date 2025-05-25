@@ -44,16 +44,16 @@ def compare_html(a, b, browser=None, diff_output=None):
 def compare_files(a, b, **kwargs):
     if filecmp.cmp(a, b):
         return True
-    if a.endswith(".json"):
+    if a.suffix == ".json":
         return compare_json(a, b)
-    if a.endswith(".html"):
+    if a.suffix == ".html":
         return compare_html(a, b, **kwargs)
 
 
 def comparable_file(path):
-    if path.endswith(".json"):
+    if path.suffix == ".json":
         return True
-    if path.endswith(".html"):
+    if path.suffix == ".html":
         return True
     return False
 
