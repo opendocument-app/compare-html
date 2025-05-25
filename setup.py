@@ -7,7 +7,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="htmlcmp",
-    version="1.0.3",
+    version="1.0.4",
     author="Andreas Stefl",
     author_email="stefl.andreas@gmail.com",
     description="Compare HTML files by rendered output",
