@@ -1,0 +1,43 @@
+name: pypi
+
+on:
+  pull_request:
+  push:
+    branches:
+    - main
+  release:
+    types:
+    - published
+
+jobs:
+  build_sdist:
+    name: Build SDist
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build SDist
+      run: pipx run build --sdist
+    - name: Check metadata
+      run: pipx run twine check dist/*
+    - uses: actions/upload-artifact@v4
+      with:
+        name: cibw-sdist
+        path: dist/*.tar.gz
+
+  upload_all:
+    name: Upload if release
+    needs: [build_sdist]
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'release' && github.event.action == 'published'
+    permissions:
+      id-token: write
+    steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.x"
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: cibw-*
+        path: dist
+        merge-multiple: true
+    - uses: pypa/gh-action-pypi-publish@release/v1

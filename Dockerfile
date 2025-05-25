@@ -1,24 +1,24 @@
 FROM --platform=linux/amd64 ubuntu:24.04
 
-ENV FIREFOX_VERSION="133.0"
+ENV FIREFOX_VERSION="138.0.4"
 ENV PHANTOMJS_VERSION="2.1.1"
-ENV GECKODRIVER_VERSION="0.35.0"
+ENV GECKODRIVER_VERSION="0.36.0"
 
 ENV INSTALL="apt-get install -y --no-install-recommends"
 
 RUN apt-get update
 
 # install download and unpack utilities
-RUN $INSTALL wget ca-certificates bzip2 unzip
+RUN $INSTALL wget ca-certificates xz-utils bzip2 unzip
 
 # firefox setup
 RUN $INSTALL libgtk-3-0t64 libasound2t64 libx11-xcb1
 
-RUN wget https://download-installer.cdn.mozilla.net/pub/firefox/releases/${FIREFOX_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_VERSION}.tar.bz2 && \
-    tar -xf firefox-${FIREFOX_VERSION}.tar.bz2 && \
+RUN wget https://download-installer.cdn.mozilla.net/pub/firefox/releases/${FIREFOX_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_VERSION}.tar.xz && \
+    tar -xf firefox-${FIREFOX_VERSION}.tar.xz && \
     mv firefox /usr/local/share && \
     ln -s /usr/local/share/firefox/firefox /usr/local/bin && \
-    rm firefox-${FIREFOX_VERSION}.tar.bz2
+    rm firefox-${FIREFOX_VERSION}.tar.xz
 
 RUN firefox --version
 
@@ -53,8 +53,7 @@ ENV OPENSSL_CONF=/etc/ssl
 RUN phantomjs --version
 
 # install python dependencies
-ADD requirements.txt .
+COPY . /compare-html
 RUN $INSTALL python3 python3-pip && \
     pip config set global.break-system-packages true && \
-    pip install -r requirements.txt && \
-    rm requirements.txt \
+    pip install /compare-html
