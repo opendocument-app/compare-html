@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM --platform=linux/amd64 ubuntu:24.04
 
 ENV FIREFOX_VERSION="138.0.4"
 ENV PHANTOMJS_VERSION="2.1.1"
