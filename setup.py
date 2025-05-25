@@ -24,10 +24,10 @@ setup(
     },
     entry_points = {
         "console_scripts": [
-            "compare-html=compare-html.compare_output:main",
-            "compare-html-server=compare-html.compare_output_server:main",
-            "html-render-diff=compare-html.html_render_diff:main",
-            "html-tidy=compare-html.tidy_output:main",
+            "compare-html=htmlcmp.compare_output:main",
+            "compare-html-server=htmlcmp.compare_output_server:main",
+            "html-render-diff=htmlcmp.html_render_diff:main",
+            "html-tidy=htmlcmp.tidy_output:main",
         ],
     },
 )
