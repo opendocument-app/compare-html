@@ -25,7 +25,9 @@ def tidy_html(path, html_tidy_config=None):
         cmd = shlex.split(f'tidy -config "{html_tidy_config.resolve()}" -q "{path}"')
     else:
         cmd = shlex.split(f'tidy -q "{path}"')
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    result = subprocess.run(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
     if result.returncode == 1:
         print(result.stdout)
         return 1
@@ -61,9 +63,7 @@ def tidy_dir(path, level=0, prefix="", html_tidy_config=None):
     }
 
     items = [path / name for name in path.iterdir()]
-    files = sorted(
-        [path for path in items if path.is_file() and tidyable_file(path)]
-    )
+    files = sorted([path for path in items if path.is_file() and tidyable_file(path)])
     dirs = sorted([path for path in items if path.is_dir()])
 
     for filename in [path.name for path in files]:
@@ -95,7 +95,9 @@ def tidy_dir(path, level=0, prefix="", html_tidy_config=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("path", type=Path, help="Path to directory to tidy")
-    parser.add_argument("--html-tidy-config", type=Path, help="Path to tidy config file")
+    parser.add_argument(
+        "--html-tidy-config", type=Path, help="Path to tidy config file"
+    )
     args = parser.parse_args()
 
     result = tidy_dir(args.path, html_tidy_config=args.html_tidy_config)
