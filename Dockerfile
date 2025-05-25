@@ -9,7 +9,7 @@ ENV INSTALL="apt-get install -y --no-install-recommends"
 RUN apt-get update
 
 # install download and unpack utilities
-RUN $INSTALL wget ca-certificates bzip2 unzip
+RUN $INSTALL wget ca-certificates xz-utils bzip2 unzip
 
 # firefox setup
 RUN $INSTALL libgtk-3-0t64 libasound2t64 libx11-xcb1

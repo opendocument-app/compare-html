@@ -1,5 +1,5 @@
 [project]
-name = "compare-html"
+name = "htmlcmp"
 version = "1.0.0"
 description = "Compare HTML files by rendered output"
 classifiers = []
