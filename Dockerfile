@@ -14,11 +14,11 @@ RUN $INSTALL wget ca-certificates bzip2 unzip
 # firefox setup
 RUN $INSTALL libgtk-3-0t64 libasound2t64 libx11-xcb1
 
-RUN wget https://download-installer.cdn.mozilla.net/pub/firefox/releases/${FIREFOX_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_VERSION}.tar.bz2 && \
-    tar -xf firefox-${FIREFOX_VERSION}.tar.bz2 && \
+RUN wget https://download-installer.cdn.mozilla.net/pub/firefox/releases/${FIREFOX_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_VERSION}.tar.xz && \
+    tar -xf firefox-${FIREFOX_VERSION}.tar.xz && \
     mv firefox /usr/local/share && \
     ln -s /usr/local/share/firefox/firefox /usr/local/bin && \
-    rm firefox-${FIREFOX_VERSION}.tar.bz2
+    rm firefox-${FIREFOX_VERSION}.tar.xz
 
 RUN firefox --version
 
