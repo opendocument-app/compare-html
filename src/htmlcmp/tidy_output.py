@@ -93,7 +93,7 @@ def tidy_dir(path, level=0, prefix="", tidy_config=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("path", type=Path, help="Path to directory to tidy")
-    parser.add_argument("--tidy-config", type=Path, help="Path to tidy config file")
+    parser.add_argument("--html-tidy-config", type=Path, help="Path to tidy config file")
     args = parser.parse_args()
 
     result = tidy_dir(args.path, tidy_config=args.tidy_config)
