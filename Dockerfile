@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 ubuntu:24.04
+FROM ubuntu:24.04
 
 ENV FIREFOX_VERSION="133.0"
 ENV PHANTOMJS_VERSION="2.1.1"
@@ -53,8 +53,7 @@ ENV OPENSSL_CONF=/etc/ssl
 RUN phantomjs --version
 
 # install python dependencies
-ADD requirements.txt .
+ADD ./* /compare-html
 RUN $INSTALL python3 python3-pip && \
     pip config set global.break-system-packages true && \
-    pip install -r requirements.txt && \
-    rm requirements.txt \
+    pip install /compare-html
