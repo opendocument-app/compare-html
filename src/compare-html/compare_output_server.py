@@ -31,20 +31,17 @@ class Observer:
                 self._path = path
 
             def dispatch(self, event):
-                if event.event_type in ['opened']:
+                if event.event_type in ["opened"]:
                     return
 
                 if os.path.isfile(event.src_path):
                     Config.comparator.submit(
-                        os.path.relpath(event.src_path, self._path))
+                        os.path.relpath(event.src_path, self._path)
+                    )
 
         self._observer = watchdog.observers.Observer()
-        self._observer.schedule(Handler(Config.path_a),
-                                Config.path_a,
-                                recursive=True)
-        self._observer.schedule(Handler(Config.path_b),
-                                Config.path_b,
-                                recursive=True)
+        self._observer.schedule(Handler(Config.path_a), Config.path_a, recursive=True)
+        self._observer.schedule(Handler(Config.path_b), Config.path_b, recursive=True)
 
     def start(self):
         self._observer.start()
@@ -59,7 +56,8 @@ class Observer:
 
             for name in common:
                 if os.path.isfile(os.path.join(a, name)) and comparable_file(
-                        os.path.join(a, name)):
+                    os.path.join(a, name)
+                ):
                     Config.comparator.submit(os.path.join(common_path, name))
                 elif os.path.isdir(os.path.join(a, name)):
                     init_compare(os.path.join(a, name), os.path.join(b, name))
@@ -76,13 +74,14 @@ class Observer:
 class Comparator:
     def __init__(self, max_workers):
         def initializer():
-            browser = getattr(Config.thread_local, 'browser', None)
+            browser = getattr(Config.thread_local, "browser", None)
             if browser is None:
                 browser = get_browser(driver=Config.driver)
                 Config.thread_local.browser = browser
 
-        self._executor = ThreadPoolExecutor(max_workers=max_workers,
-                                            initializer=initializer)
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers, initializer=initializer
+        )
         self._result = {}
         self._future = {}
 
@@ -95,44 +94,46 @@ class Comparator:
             except Exception:
                 pass
 
-        self._result[path] = 'pending'
+        self._result[path] = "pending"
         self._future[path] = self._executor.submit(self.compare, path)
 
     def compare(self, path):
-        browser = getattr(Config.thread_local, 'browser', None)
-        result = compare_files(os.path.join(Config.path_a, path),
-                               os.path.join(Config.path_b, path),
-                               browser=browser)
-        self._result[path] = 'same' if result else 'different'
+        browser = getattr(Config.thread_local, "browser", None)
+        result = compare_files(
+            os.path.join(Config.path_a, path),
+            os.path.join(Config.path_b, path),
+            browser=browser,
+        )
+        self._result[path] = "same" if result else "different"
         self._future.pop(path)
 
     def result(self, path):
         if path in self._result:
             return self._result[path]
-        return 'unknown'
+        return "unknown"
 
     def result_symbol(self, path):
         result = self.result(path)
-        if result == 'pending':
-            return '🔄'
-        if result == 'same':
-            return '✔'
-        if result == 'different':
-            return '❌'
-        return '⛔'
+        if result == "pending":
+            return "🔄"
+        if result == "same":
+            return "✔"
+        if result == "different":
+            return "❌"
+        return "⛔"
 
     def result_css(self, path):
         result = self.result(path)
-        if result == 'pending':
-            return 'color:blue;'
-        if result == 'same':
-            return 'color:green;'
-        if result == 'different':
-            return 'color:orange;'
-        return 'color:red;'
+        if result == "pending":
+            return "color:blue;"
+        if result == "same":
+            return "color:green;"
+        if result == "different":
+            return "color:orange;"
+        return "color:red;"
 
 
-app = Flask('compare')
+app = Flask("compare")
 
 
 @app.route("/")
@@ -143,69 +144,83 @@ def root():
         left = sorted(os.listdir(a))
         right = sorted(os.listdir(b))
 
-        left_files = sorted([
-            name for name in left if os.path.isfile(os.path.join(a, name))
-            and comparable_file(os.path.join(a, name))
-        ])
-        right_files = sorted([
-            name for name in right if os.path.isfile(os.path.join(b, name))
-            and comparable_file(os.path.join(b, name))
-        ])
+        left_files = sorted(
+            [
+                name
+                for name in left
+                if os.path.isfile(os.path.join(a, name))
+                and comparable_file(os.path.join(a, name))
+            ]
+        )
+        right_files = sorted(
+            [
+                name
+                for name in right
+                if os.path.isfile(os.path.join(b, name))
+                and comparable_file(os.path.join(b, name))
+            ]
+        )
 
         left_dirs = sorted(
-            [name for name in left if os.path.isdir(os.path.join(a, name))])
+            [name for name in left if os.path.isdir(os.path.join(a, name))]
+        )
         right_dirs = sorted(
-            [name for name in right if os.path.isdir(os.path.join(b, name))])
+            [name for name in right if os.path.isdir(os.path.join(b, name))]
+        )
 
         common_files = [name for name in left_files if name in right_files]
         common_dirs = [name for name in left_dirs if name in right_dirs]
 
-        result = '<ul>'
+        result = "<ul>"
 
-        left_files_missing = ' '.join(
-            [name for name in right_files if name not in left_files])
-        right_files_missing = ' '.join(
-            [name for name in left_files if name not in right_files])
-        left_dirs_missing = ' '.join(
-            [name for name in right_dirs if name not in left_dirs])
-        right_dirs_missing = ' '.join(
-            [name for name in left_dirs if name not in right_dirs])
+        left_files_missing = " ".join(
+            [name for name in right_files if name not in left_files]
+        )
+        right_files_missing = " ".join(
+            [name for name in left_files if name not in right_files]
+        )
+        left_dirs_missing = " ".join(
+            [name for name in right_dirs if name not in left_dirs]
+        )
+        right_dirs_missing = " ".join(
+            [name for name in left_dirs if name not in right_dirs]
+        )
         if left_files_missing:
-            result += f'<li><b>A files missing: {left_files_missing}</b></li>'
+            result += f"<li><b>A files missing: {left_files_missing}</b></li>"
         if right_files_missing:
-            result += f'<li><b>B files missing: {right_files_missing}</b></li>'
+            result += f"<li><b>B files missing: {right_files_missing}</b></li>"
         if left_dirs_missing:
-            result += f'<li><b>A dirs missing: {left_dirs_missing}</b></li>'
+            result += f"<li><b>A dirs missing: {left_dirs_missing}</b></li>"
         if right_dirs_missing:
-            result += f'<li><b>B dirs missing: {right_dirs_missing}</b></li>'
+            result += f"<li><b>B dirs missing: {right_dirs_missing}</b></li>"
 
         for name in common_files:
             if Config.comparator is None:
                 result += f'<li><a href="/compare/{os.path.join(common_path, name)}">{name}</a></li>'
             else:
                 symbol = Config.comparator.result_symbol(
-                    os.path.join(common_path, name))
-                css = Config.comparator.result_css(
-                    os.path.join(common_path, name))
+                    os.path.join(common_path, name)
+                )
+                css = Config.comparator.result_css(os.path.join(common_path, name))
                 result += f'<li style="{css}"><a style="{css}" href="/compare/{os.path.join(common_path, name)}">{name}</a> {symbol}</li>'
 
         for name in common_dirs:
-            result += f'<li>{name}'
+            result += f"<li>{name}"
             result += print_tree(os.path.join(a, name), os.path.join(b, name))
-            result += '</li>'
+            result += "</li>"
 
-        result += '</ul>'
+        result += "</ul>"
         return result
 
-    result = ''
-    result += f'<p>compare A {Config.path_a} vs B {Config.path_b}</p>'
+    result = ""
+    result += f"<p>compare A {Config.path_a} vs B {Config.path_b}</p>"
     result += print_tree(Config.path_a, Config.path_b)
     return result
 
 
-@app.route('/compare/<path:path>')
+@app.route("/compare/<path:path>")
 def compare(path):
-    return f'''<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html>
 <head>
 <style>
@@ -237,36 +252,38 @@ iframe_b.contentWindow.addEventListener('scroll', function(event) {{
 </script>
 </body>
 </html> 
-'''
+"""
 
 
-@app.route('/image_diff/<path:path>')
+@app.route("/image_diff/<path:path>")
 def image_diff(path):
-    diff, _ = html_render_diff(os.path.join(Config.path_a, path),
-                               os.path.join(Config.path_b, path),
-                               Config.browser)
+    diff, _ = html_render_diff(
+        os.path.join(Config.path_a, path),
+        os.path.join(Config.path_b, path),
+        Config.browser,
+    )
     tmp = io.BytesIO()
-    diff.save(tmp, 'JPEG', quality=70)
+    diff.save(tmp, "JPEG", quality=70)
     tmp.seek(0)
-    return send_file(tmp, mimetype='image/jpeg')
+    return send_file(tmp, mimetype="image/jpeg")
 
 
-@app.route('/file/<variant>/<path:path>')
+@app.route("/file/<variant>/<path:path>")
 def file(variant, path):
-    variant_root = Config.path_a if variant == 'a' else Config.path_b
+    variant_root = Config.path_a if variant == "a" else Config.path_b
     return send_from_directory(variant_root, path)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('a')
-    parser.add_argument('b')
-    parser.add_argument('--driver',
-                        choices=['chrome', 'firefox', 'phantomjs'],
-                        default='firefox')
-    parser.add_argument('--max-workers', type=int, default=1)
-    parser.add_argument('--compare', action='store_true')
-    parser.add_argument('--port', type=int, default=5000)
+    parser.add_argument("a")
+    parser.add_argument("b")
+    parser.add_argument(
+        "--driver", choices=["chrome", "firefox", "phantomjs"], default="firefox"
+    )
+    parser.add_argument("--max-workers", type=int, default=1)
+    parser.add_argument("--compare", action="store_true")
+    parser.add_argument("--port", type=int, default=5000)
     args = parser.parse_args()
 
     Config.path_a = args.a
@@ -280,7 +297,7 @@ def main():
         Config.observer = Observer()
         Config.observer.start()
 
-    app.run(host='0.0.0.0', port=args.port)
+    app.run(host="0.0.0.0", port=args.port)
 
     if args.compare:
         Config.observer.stop()

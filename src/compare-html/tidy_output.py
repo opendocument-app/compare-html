@@ -12,7 +12,7 @@ from common import bcolors
 
 def tidy_json(path):
     try:
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             json.load(f)
         return 0
     except ValueError:
@@ -20,12 +20,11 @@ def tidy_json(path):
 
 
 def tidy_html(path):
-    config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                               ".html-tidy")
+    config_path = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)), ".html-tidy"
+    )
     cmd = shlex.split(f'tidy -config "{config_path}" -q "{path}"')
-    result = subprocess.run(cmd,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     if result.returncode == 1:
         return 1
     if result.returncode > 1:
@@ -34,66 +33,66 @@ def tidy_html(path):
 
 
 def tidy_file(path):
-    if path.endswith('.json'):
+    if path.endswith(".json"):
         return tidy_json(path)
-    elif path.endswith('.html'):
+    elif path.endswith(".html"):
         return tidy_html(path)
 
 
 def tidyable_file(path):
-    if path.endswith('.json'):
+    if path.endswith(".json"):
         return True
-    if path.endswith('.html'):
+    if path.endswith(".html"):
         return True
     return False
 
 
-def tidy_dir(path, level=0, prefix=''):
-    prefix_file = prefix + '├── '
+def tidy_dir(path, level=0, prefix=""):
+    prefix_file = prefix + "├── "
     if level == 0:
-        print(f'tidy dir {path}')
+        print(f"tidy dir {path}")
 
     result = {
-        'warning': [],
-        'error': [],
+        "warning": [],
+        "error": [],
     }
 
     items = [os.path.join(path, name) for name in os.listdir(path)]
-    files = sorted([
-        path for path in items if os.path.isfile(path) and tidyable_file(path)
-    ])
+    files = sorted(
+        [path for path in items if os.path.isfile(path) and tidyable_file(path)]
+    )
     dirs = sorted([path for path in items if os.path.isdir(path)])
 
     for filename in [os.path.basename(path) for path in files]:
         filepath = os.path.join(path, filename)
         tidy = tidy_file(filepath)
         if tidy == 0:
-            print(f'{prefix_file}{bcolors.OKGREEN}{filename} ✓{bcolors.ENDC}')
+            print(f"{prefix_file}{bcolors.OKGREEN}{filename} ✓{bcolors.ENDC}")
         elif tidy == 1:
-            print(f'{prefix_file}{bcolors.WARNING}{filename} ✓{bcolors.ENDC}')
-            result['warning'].append(filepath)
+            print(f"{prefix_file}{bcolors.WARNING}{filename} ✓{bcolors.ENDC}")
+            result["warning"].append(filepath)
         elif tidy > 1:
-            print(f'{prefix_file}{bcolors.FAIL}{filename} ✘{bcolors.ENDC}')
-            result['error'].append(filepath)
+            print(f"{prefix_file}{bcolors.FAIL}{filename} ✘{bcolors.ENDC}")
+            result["error"].append(filepath)
 
     for dirname in [os.path.basename(path) for path in dirs]:
-        print(prefix + '├── ' + dirname)
-        subresult = tidy_dir(os.path.join(path, dirname),
-                             level=level + 1,
-                             prefix=prefix + '│   ')
-        result['warning'].extend(subresult['warning'])
-        result['error'].extend(subresult['error'])
+        print(prefix + "├── " + dirname)
+        subresult = tidy_dir(
+            os.path.join(path, dirname), level=level + 1, prefix=prefix + "│   "
+        )
+        result["warning"].extend(subresult["warning"])
+        result["error"].extend(subresult["error"])
 
     return result
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('a')
+    parser.add_argument("a")
     args = parser.parse_args()
 
     result = tidy_dir(args.a)
-    if result['error']:
+    if result["error"]:
         return 1
 
     return 0
