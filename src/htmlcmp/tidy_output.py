@@ -59,7 +59,7 @@ def tidy_dir(path, level=0, prefix="", html_tidy_config=None):
         "error": [],
     }
 
-    items = [path / name for name in path.iterdir()]
+    items = [p for p in path.iterdir()]
     files = sorted([path for path in items if path.is_file() and tidyable_file(path)])
     dirs = sorted([path for path in items if path.is_dir()])
 
