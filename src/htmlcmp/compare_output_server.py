@@ -49,8 +49,8 @@ class Observer:
         def init_compare(a, b):
             common_path = a / Config.path_a
 
-            left = sorted(a.iterdir())
-            right = sorted(b.iterdir())
+            left = sorted(p.name for p in a.iterdir())
+            right = sorted(p.name for p in b.iterdir())
 
             common = [name for name in left if name in right]
 
@@ -139,8 +139,8 @@ def root():
     def print_tree(a, b):
         common_path = a / Config.path_a
 
-        left = sorted(a.iterdir())
-        right = sorted(b.iterdir())
+        left = sorted(p.name for p in a.iterdir())
+        right = sorted(p.name for p in b.iterdir())
 
         left_files = sorted(
             [

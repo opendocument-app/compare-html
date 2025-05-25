@@ -68,8 +68,8 @@ def submit_compare_dirs(a, b, executor, diff_output=None, **kwargs):
         "right_dirs_missing": [],
     }
 
-    left = sorted(a.iterdir())
-    right = sorted(b.iterdir())
+    left = sorted(p.name for p in a.iterdir())
+    right = sorted(p.name for p in b.iterdir())
 
     left_files = sorted(
         [name for name in left if (a / name).is_file() and comparable_file(a / name)]
