@@ -12,6 +12,12 @@ maintainers = [
 requires-python = ">=3.7"
 readme = "README.md"
 license = {file = "LICENSE.txt"}
+dependencies = [
+    "pillow",
+    "selenium",
+    "flask",
+    "watchdog",
+]
 
 [project.scripts]
 "compare-html" = "htmlcmp.compare_output:main"
@@ -29,9 +35,5 @@ tracker = "https://github.com/opendocument-app/compare-html/issues"
 [build-system]
 requires = [
     "setuptools",
-    "pillow",
-    "selenium",
-    "flask",
-    "watchdog",
 ]
 build-backend = "setuptools.build_meta"
