@@ -20,24 +20,26 @@ def tidy_json(path):
         return 1
 
 
-def tidy_html(path, tidy_config=None):
-    if tidy_config:
-        cmd = shlex.split(f'tidy -config "{tidy_config.resove()}" -q "{path}"')
+def tidy_html(path, html_tidy_config=None):
+    if html_tidy_config:
+        cmd = shlex.split(f'tidy -config "{html_tidy_config.resolve()}" -q "{path}"')
     else:
         cmd = shlex.split(f'tidy -q "{path}"')
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if result.returncode == 1:
+        print(result.stdout)
         return 1
     if result.returncode > 1:
+        print(result.stdout)
         return 2
     return 0
 
 
-def tidy_file(path, tidy_config=None):
+def tidy_file(path, html_tidy_config=None):
     if path.suffix == ".json":
         return tidy_json(path)
     elif path.suffix == ".html":
-        return tidy_html(path, tidy_config=tidy_config)
+        return tidy_html(path, html_tidy_config=html_tidy_config)
 
 
 def tidyable_file(path):
@@ -48,7 +50,7 @@ def tidyable_file(path):
     return False
 
 
-def tidy_dir(path, level=0, prefix="", tidy_config=None):
+def tidy_dir(path, level=0, prefix="", html_tidy_config=None):
     prefix_file = prefix + "├── "
     if level == 0:
         print(f"tidy dir {path}")
@@ -66,7 +68,7 @@ def tidy_dir(path, level=0, prefix="", tidy_config=None):
 
     for filename in [path.name for path in files]:
         filepath = path / filename
-        tidy = tidy_file(filepath, tidy_config=tidy_config)
+        tidy = tidy_file(filepath, html_tidy_config=html_tidy_config)
         if tidy == 0:
             print(f"{prefix_file}{bcolors.OKGREEN}{filename} ✓{bcolors.ENDC}")
         elif tidy == 1:
@@ -82,7 +84,7 @@ def tidy_dir(path, level=0, prefix="", tidy_config=None):
             path / dirname,
             level=level + 1,
             prefix=prefix + "│   ",
-            tidy_config=tidy_config,
+            html_tidy_config=html_tidy_config,
         )
         result["warning"].extend(subresult["warning"])
         result["error"].extend(subresult["error"])
@@ -96,7 +98,7 @@ def main():
     parser.add_argument("--html-tidy-config", type=Path, help="Path to tidy config file")
     args = parser.parse_args()
 
-    result = tidy_dir(args.path, tidy_config=args.tidy_config)
+    result = tidy_dir(args.path, html_tidy_config=args.html_tidy_config)
     if result["error"]:
         return 1
 
