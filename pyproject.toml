@@ -28,6 +28,7 @@ tracker = "https://github.com/opendocument-app/compare-html/issues"
 
 [build-system]
 requires = [
+    "setuptools",
     "Pillow>=10.3.0",
     "selenium",
     "flask",
