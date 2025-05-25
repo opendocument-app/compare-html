@@ -7,7 +7,8 @@ import argparse
 import json
 import subprocess
 import shlex
-from common import bcolors
+
+from htmlcmp.common import bcolors
 
 
 def tidy_json(path):
