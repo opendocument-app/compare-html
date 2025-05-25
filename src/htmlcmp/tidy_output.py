@@ -5,7 +5,6 @@ import sys
 import argparse
 import json
 import subprocess
-import shlex
 from pathlib import Path
 
 from htmlcmp.common import bcolors
@@ -21,10 +20,10 @@ def tidy_json(path):
 
 
 def tidy_html(path, html_tidy_config=None):
+    cmd = ["tidy"]
     if html_tidy_config:
-        cmd = shlex.split(f'tidy -config "{html_tidy_config.resolve()}" -q "{path}"')
-    else:
-        cmd = shlex.split(f'tidy -q "{path}"')
+        cmd.extend(["-config", str(html_tidy_config.resolve())])
+    cmd.append(str(path))
     result = subprocess.run(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
