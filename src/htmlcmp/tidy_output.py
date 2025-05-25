@@ -29,10 +29,8 @@ def tidy_html(path, html_tidy_config=None):
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
     if result.returncode == 1:
-        print(result.stdout)
         return 1
     if result.returncode > 1:
-        print(result.stdout)
         return 2
     return 0
 
