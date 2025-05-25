@@ -1,0 +1,30 @@
+name: pip
+
+on:
+  pull_request:
+  push:
+    branches:
+    - main
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-13, windows-2022]
+        python-version: ["3.7", "3.11"]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Add requirements
+      run: python -m pip install --upgrade pip wheel setuptools conan
+    - name: Install conan config
+      run: conan config install .github/config/${{ matrix.os }}/conan
+    - name: Build and install
+      run: pip install --verbose .[test]
+    # TODO
+    #- name: Test
+    #  run: python -m pytest
