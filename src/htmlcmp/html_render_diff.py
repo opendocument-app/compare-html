@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
 import sys
 import argparse
 import io
 import time
+from pathlib import Path
 
 from PIL import Image, ImageChops
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
-import pathlib
 
 
-def to_url(something):
-    if os.path.isfile(something):
-        return pathlib.Path(os.path.abspath(something)).as_uri()
-    return something
+def to_url(path):
+    if path.is_file():
+        return path.as_uri()
+    return path
 
 
 def screenshot(browser, url):
@@ -77,8 +76,8 @@ def html_render_diff(a, b, browser):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("a")
-    parser.add_argument("b")
+    parser.add_argument("a", type=Path)
+    parser.add_argument("b", type=Path)
     parser.add_argument(
         "--driver", choices=["chrome", "firefox", "phantomjs"], default="firefox"
     )
