@@ -1,5 +1,6 @@
 import pytest
 from pathlib import Path
+import shutil
 
 from htmlcmp.html_render_diff import to_url, get_browser, html_render_diff
 
@@ -31,9 +32,10 @@ def test_get_browser():
     browser.quit()
 
     # Test with PhantomJS
-    browser = get_browser("phantomjs")
-    assert browser.name == "phantomjs"
-    browser.quit()
+    if shutil.which("phantomjs") is not None:
+        browser = get_browser("phantomjs")
+        assert browser.name == "phantomjs"
+        browser.quit()
 
 
 def test_html_render_diff():

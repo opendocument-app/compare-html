@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import shutil
 import sys
 import argparse
 import io
@@ -70,6 +71,8 @@ def get_browser(
         )
 
     if driver == "phantomjs":
+        if shutil.which("phantomjs") is None:
+            raise EnvironmentError("PhantomJS is not installed or not found in PATH")
         browser = webdriver.PhantomJS()
     elif driver == "firefox":
         options = webdriver.FirefoxOptions()
