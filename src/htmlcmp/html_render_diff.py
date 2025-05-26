@@ -14,7 +14,7 @@ from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 
 
-def to_url(path: str | Path):
+def to_url(path: str | Path) -> str:
     if not isinstance(path, (str, Path)):
         raise TypeError(f"Expected str or Path, got {type(path)}")
 
@@ -25,9 +25,11 @@ def to_url(path: str | Path):
     return path
 
 
-def screenshot(browser, url: str):
+def screenshot(browser: webdriver.Remote, url: str) -> Image.Image:
     if not isinstance(url, str):
         raise TypeError(f"Expected str, got {type(url)}")
+    if not isinstance(browser, webdriver.Remote):
+        raise TypeError(f"Expected webdriver.Remote, got {type(browser)}")
 
     browser.get(url)
 
@@ -57,7 +59,9 @@ def screenshot(browser, url: str):
     return Image.open(io.BytesIO(png))
 
 
-def get_browser(driver: str, max_width: int = 1000, max_height: int = 10000):
+def get_browser(
+    driver: str, max_width: int = 1000, max_height: int = 10000
+) -> webdriver.Remote:
     if not isinstance(driver, str):
         raise TypeError(f"Expected str, got {type(driver)}")
     if not isinstance(max_width, int) or not isinstance(max_height, int):
@@ -81,9 +85,13 @@ def get_browser(driver: str, max_width: int = 1000, max_height: int = 10000):
     return browser
 
 
-def html_render_diff(a: str | Path, b: str | Path, browser):
-    if browser is None:
-        raise TypeError("Browser instance cannot be None")
+def html_render_diff(
+    a: str | Path, b: str | Path, browser: webdriver.Remote
+) -> tuple[Image.Image, tuple[Image.Image, Image.Image]]:
+    if not isinstance(a, (str, Path)) or not isinstance(b, (str, Path)):
+        raise TypeError("Both a and b must be str or Path instances")
+    if not isinstance(browser, webdriver.Remote):
+        raise TypeError(f"Expected webdriver.Remote, got {type(browser)}")
 
     image_a = screenshot(browser, to_url(a))
     image_b = screenshot(browser, to_url(b))

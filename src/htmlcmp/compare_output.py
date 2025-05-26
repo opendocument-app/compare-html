@@ -17,7 +17,7 @@ class Config:
     thread_local = threading.local()
 
 
-def parse_json(path: Path):
+def parse_json(path: Path) -> dict:
     if not isinstance(path, Path):
         raise TypeError(f"Expected Path, got {type(path)}")
     if not path.is_file():
@@ -27,7 +27,7 @@ def parse_json(path: Path):
         return json.load(f)
 
 
-def compare_json(a: Path, b: Path):
+def compare_json(a: Path, b: Path) -> bool:
     if not isinstance(a, Path) or not isinstance(b, Path):
         raise TypeError("Both arguments must be of type Path")
     if not a.is_file() or not b.is_file():
@@ -38,7 +38,7 @@ def compare_json(a: Path, b: Path):
     return json_a == json_b
 
 
-def compare_html(a: Path, b: Path, browser=None, diff_output: Path = None):
+def compare_html(a: Path, b: Path, browser=None, diff_output: Path = None) -> bool:
     if not isinstance(a, Path) or not isinstance(b, Path):
         raise TypeError("Both arguments must be of type Path")
     if not a.is_file() or not b.is_file():
@@ -56,7 +56,7 @@ def compare_html(a: Path, b: Path, browser=None, diff_output: Path = None):
     return result
 
 
-def compare_files(a: Path, b: Path, **kwargs):
+def compare_files(a: Path, b: Path, **kwargs) -> bool:
     if not isinstance(a, Path) or not isinstance(b, Path):
         raise TypeError("Both arguments must be of type Path")
     if not a.is_file() or not b.is_file():
@@ -70,7 +70,7 @@ def compare_files(a: Path, b: Path, **kwargs):
         return compare_html(a, b, **kwargs)
 
 
-def comparable_file(path: Path):
+def comparable_file(path: Path) -> bool:
     if not isinstance(path, Path):
         raise TypeError(f"Expected Path, got {type(path)}")
     if not path.is_file():
@@ -83,7 +83,9 @@ def comparable_file(path: Path):
     return False
 
 
-def submit_compare_dirs(a: Path, b: Path, executor, diff_output: Path = None, **kwargs):
+def submit_compare_dirs(
+    a: Path, b: Path, executor, diff_output: Path = None, **kwargs
+) -> dict[str, list[Path]]:
     if not isinstance(a, Path) or not isinstance(b, Path):
         raise TypeError("Both arguments must be of type Path")
     if not a.is_dir() or not b.is_dir():
@@ -155,7 +157,7 @@ def submit_compare_dirs(a: Path, b: Path, executor, diff_output: Path = None, **
 
 def print_results(
     results: dict[str, list[Path]], a: Path, b: Path, level: int = 0, prefix: str = ""
-):
+) -> dict[str, list[Path]]:
     if not isinstance(a, Path) or not isinstance(b, Path):
         raise TypeError("Both arguments must be of type Path")
     if not a.is_dir() or not b.is_dir():
