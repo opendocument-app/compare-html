@@ -8,18 +8,18 @@ import io
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
-from compare_output import comparable_file, compare_files
 from flask import Flask, send_from_directory, send_file
 import watchdog.observers
 import watchdog.events
 
+from compare_output import comparable_file, compare_files
 from html_render_diff import get_browser, html_render_diff
 
 
 class Config:
-    path_a = None
-    path_b = None
-    driver = None
+    path_a: Path = None
+    path_b: Path = None
+    driver: str = None
     observer = None
     comparator = None
     browser = None
@@ -46,7 +46,12 @@ class Observer:
     def start(self):
         self._observer.start()
 
-        def init_compare(a, b):
+        def init_compare(a: Path, b: Path):
+            if not isinstance(a, Path) or not isinstance(b, Path):
+                raise TypeError("Paths must be of type Path")
+            if not a.is_dir() or not b.is_dir():
+                raise ValueError("Both paths must be directories")
+
             common_path = a / Config.path_a
 
             left = sorted(p.name for p in a.iterdir())
@@ -70,7 +75,7 @@ class Observer:
 
 
 class Comparator:
-    def __init__(self, max_workers):
+    def __init__(self, max_workers: int):
         def initializer():
             browser = getattr(Config.thread_local, "browser", None)
             if browser is None:
@@ -83,7 +88,10 @@ class Comparator:
         self._result = {}
         self._future = {}
 
-    def submit(self, path):
+    def submit(self, path: Path):
+        if not isinstance(path, Path):
+            raise TypeError("Path must be of type Path")
+
         if path in self._future:
             try:
                 self._future[path].cancel()
@@ -95,7 +103,14 @@ class Comparator:
         self._result[path] = "pending"
         self._future[path] = self._executor.submit(self.compare, path)
 
-    def compare(self, path):
+    def compare(self, path: Path):
+        if not isinstance(path, Path):
+            raise TypeError("Path must be of type Path")
+        if not path.is_file():
+            raise ValueError("Path must be a file")
+        if path not in self._future:
+            raise RuntimeError("Path not submitted for comparison")
+
         browser = getattr(Config.thread_local, "browser", None)
         result = compare_files(
             Config.path_a / path,
@@ -105,12 +120,18 @@ class Comparator:
         self._result[path] = "same" if result else "different"
         self._future.pop(path)
 
-    def result(self, path):
+    def result(self, path: Path):
+        if not isinstance(path, Path):
+            raise TypeError("Path must be of type Path")
+
         if path in self._result:
             return self._result[path]
         return "unknown"
 
-    def result_symbol(self, path):
+    def result_symbol(self, path: Path):
+        if not isinstance(path, Path):
+            raise TypeError("Path must be of type Path")
+
         result = self.result(path)
         if result == "pending":
             return "🔄"
@@ -120,7 +141,10 @@ class Comparator:
             return "❌"
         return "⛔"
 
-    def result_css(self, path):
+    def result_css(self, path: Path):
+        if not isinstance(path, Path):
+            raise TypeError("Path must be of type Path")
+
         result = self.result(path)
         if result == "pending":
             return "color:blue;"
@@ -136,7 +160,12 @@ app = Flask("compare")
 
 @app.route("/")
 def root():
-    def print_tree(a, b):
+    def print_tree(a: Path, b: Path):
+        if not isinstance(a, Path) or not isinstance(b, Path):
+            raise TypeError("Paths must be of type Path")
+        if not a.is_dir() or not b.is_dir():
+            raise ValueError("Both paths must be directories")
+
         common_path = a / Config.path_a
 
         left = sorted(p.name for p in a.iterdir())
@@ -209,7 +238,10 @@ def root():
 
 
 @app.route("/compare/<path:path>")
-def compare(path):
+def compare(path: str):
+    if not isinstance(path, str):
+        raise TypeError("Path must be a string")
+
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -219,7 +251,7 @@ html,body {{height:100%;margin:0;}}
 </head>
 <body style="display:flex;flex-flow:row;">
 <div style="display:flex;flex:1;flex-flow:column;margin:5px;">
-  <a href="/file/a/{path}">{Config.path_a /path}</a>
+  <a href="/file/a/{path}">{Config.path_a / path}</a>
   <iframe id="a" src="/file/a/{path}" title="a" frameborder="0" align="left" style="flex:1;"></iframe>
 </div>
 <div style="display:flex;flex:0 0 50px;flex-flow:column;">
@@ -246,7 +278,10 @@ iframe_b.contentWindow.addEventListener('scroll', function(event) {{
 
 
 @app.route("/image_diff/<path:path>")
-def image_diff(path):
+def image_diff(path: str):
+    if not isinstance(path, str):
+        raise TypeError("Path must be a string")
+
     diff, _ = html_render_diff(
         Config.path_a / path,
         Config.path_b / path,
@@ -259,7 +294,12 @@ def image_diff(path):
 
 
 @app.route("/file/<variant>/<path:path>")
-def file(variant, path):
+def file(variant: str, path: str):
+    if not isinstance(variant, str) or not isinstance(path, str):
+        raise TypeError("Variant and path must be strings")
+    if variant not in ["a", "b"]:
+        raise ValueError("Variant must be 'a' or 'b'")
+
     variant_root = Config.path_a if variant == "a" else Config.path_b
     return send_from_directory(variant_root, path)
 

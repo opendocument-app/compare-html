@@ -17,18 +17,33 @@ class Config:
     thread_local = threading.local()
 
 
-def parse_json(path):
+def parse_json(path: Path):
+    if not isinstance(path, Path):
+        raise TypeError(f"Expected Path, got {type(path)}")
+    if not path.is_file():
+        raise FileNotFoundError(f"File not found: {path}")
+
     with open(path) as f:
         return json.load(f)
 
 
-def compare_json(a, b):
+def compare_json(a: Path, b: Path):
+    if not isinstance(a, Path) or not isinstance(b, Path):
+        raise TypeError("Both arguments must be of type Path")
+    if not a.is_file() or not b.is_file():
+        raise FileNotFoundError("Both arguments must be files")
+
     json_a = json.dumps(parse_json(a), sort_keys=True)
     json_b = json.dumps(parse_json(b), sort_keys=True)
     return json_a == json_b
 
 
-def compare_html(a, b, browser=None, diff_output=None):
+def compare_html(a: Path, b: Path, browser=None, diff_output: Path = None):
+    if not isinstance(a, Path) or not isinstance(b, Path):
+        raise TypeError("Both arguments must be of type Path")
+    if not a.is_file() or not b.is_file():
+        raise FileNotFoundError("Both arguments must be files")
+
     if browser is None:
         browser = get_browser()
     diff, (image_a, image_b) = html_render_diff(a, b, browser=browser)
@@ -41,7 +56,12 @@ def compare_html(a, b, browser=None, diff_output=None):
     return result
 
 
-def compare_files(a, b, **kwargs):
+def compare_files(a: Path, b: Path, **kwargs):
+    if not isinstance(a, Path) or not isinstance(b, Path):
+        raise TypeError("Both arguments must be of type Path")
+    if not a.is_file() or not b.is_file():
+        raise FileNotFoundError("Both arguments must be files")
+
     if filecmp.cmp(a, b):
         return True
     if a.suffix == ".json":
@@ -50,7 +70,12 @@ def compare_files(a, b, **kwargs):
         return compare_html(a, b, **kwargs)
 
 
-def comparable_file(path):
+def comparable_file(path: Path):
+    if not isinstance(path, Path):
+        raise TypeError(f"Expected Path, got {type(path)}")
+    if not path.is_file():
+        raise FileNotFoundError(f"File not found: {path}")
+
     if path.suffix == ".json":
         return True
     if path.suffix == ".html":
@@ -58,7 +83,12 @@ def comparable_file(path):
     return False
 
 
-def submit_compare_dirs(a, b, executor, diff_output=None, **kwargs):
+def submit_compare_dirs(a: Path, b: Path, executor, diff_output: Path = None, **kwargs):
+    if not isinstance(a, Path) or not isinstance(b, Path):
+        raise TypeError("Both arguments must be of type Path")
+    if not a.is_dir() or not b.is_dir():
+        raise FileNotFoundError("Both arguments must be directories")
+
     results = {
         "common_dirs": [],
         "common_files": [],
@@ -123,7 +153,16 @@ def submit_compare_dirs(a, b, executor, diff_output=None, **kwargs):
     return results
 
 
-def print_results(results, a, b, level=0, prefix=""):
+def print_results(
+    results: dict[str, list[Path]], a: Path, b: Path, level: int = 0, prefix: str = ""
+):
+    if not isinstance(a, Path) or not isinstance(b, Path):
+        raise TypeError("Both arguments must be of type Path")
+    if not a.is_dir() or not b.is_dir():
+        raise FileNotFoundError("Both arguments must be directories")
+    if not isinstance(results, dict):
+        raise TypeError("Results must be a dictionary")
+
     prefix_file = prefix + "├── "
     if level == 0:
         print(f"compare dir {a} with {b}")
