@@ -14,11 +14,13 @@ from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 
 
-def to_url(path: Path):
-    if not isinstance(path, Path):
-        raise TypeError(f"Expected Path, got {type(path)}")
+def to_url(path: str | Path):
+    if not isinstance(path, (str, Path)):
+        raise TypeError(f"Expected str or Path, got {type(path)}")
 
-    if path.is_file():
+    if isinstance(path, Path):
+        if not path.is_file():
+            raise FileNotFoundError(f"File not found: {path}")
         return path.resolve().as_uri()
     return path
 
@@ -55,9 +57,7 @@ def screenshot(browser, url: str):
     return Image.open(io.BytesIO(png))
 
 
-def get_browser(
-    driver: str = "firefox", max_width: int = 1000, max_height: int = 10000
-):
+def get_browser(driver: str, max_width: int = 1000, max_height: int = 10000):
     if not isinstance(driver, str):
         raise TypeError(f"Expected str, got {type(driver)}")
     if not isinstance(max_width, int) or not isinstance(max_height, int):
@@ -71,19 +71,19 @@ def get_browser(
         options = webdriver.FirefoxOptions()
         options.add_argument("--headless")
         browser = webdriver.Firefox(options=options)
-    else:  # chrome or unknown
+    elif driver == "chrome":
         options = webdriver.ChromeOptions()
         options.add_argument("--headless=new")
         browser = webdriver.Chrome(options=options)
+    else:
+        raise ValueError(f"Unsupported driver: {driver}")
     browser.set_window_size(max_width, max_height)
     return browser
 
 
-def html_render_diff(a: Path, b: Path, browser):
-    if not isinstance(a, Path) or not isinstance(b, Path):
-        raise TypeError("Both arguments must be of type Path")
-    if not a.is_file() or not b.is_file():
-        raise FileNotFoundError("Both arguments must be files")
+def html_render_diff(a: str | Path, b: str | Path, browser):
+    if browser is None:
+        raise TypeError("Browser instance cannot be None")
 
     image_a = screenshot(browser, to_url(a))
     image_b = screenshot(browser, to_url(b))

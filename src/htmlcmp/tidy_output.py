@@ -10,7 +10,12 @@ from pathlib import Path
 from htmlcmp.common import bcolors
 
 
-def tidy_json(path):
+def tidy_json(path: Path) -> int:
+    if not isinstance(path, Path):
+        raise TypeError("path must be a Path object")
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} is not a file")
+
     try:
         with open(path, "r") as f:
             json.load(f)
@@ -19,7 +24,16 @@ def tidy_json(path):
         return 1
 
 
-def tidy_html(path, html_tidy_config=None):
+def tidy_html(path: Path, html_tidy_config: Path = None) -> int:
+    if not isinstance(path, Path):
+        raise TypeError("path must be a Path object")
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} is not a file")
+    if html_tidy_config is not None and not isinstance(html_tidy_config, Path):
+        raise TypeError("html_tidy_config must be a Path object or None")
+    if html_tidy_config is not None and not html_tidy_config.is_file():
+        raise FileNotFoundError(f"{html_tidy_config} is not a file")
+
     cmd = ["tidy"]
     if html_tidy_config:
         cmd.extend(["-config", str(html_tidy_config.resolve())])
@@ -34,14 +48,24 @@ def tidy_html(path, html_tidy_config=None):
     return 0
 
 
-def tidy_file(path, html_tidy_config=None):
+def tidy_file(path: Path, html_tidy_config: Path = None) -> int:
+    if not isinstance(path, Path):
+        raise TypeError("path must be a Path object")
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} is not a file")
+
     if path.suffix == ".json":
         return tidy_json(path)
     elif path.suffix == ".html":
         return tidy_html(path, html_tidy_config=html_tidy_config)
 
 
-def tidyable_file(path):
+def tidyable_file(path: Path) -> bool:
+    if not isinstance(path, Path):
+        raise TypeError("path must be a Path object")
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} is not a file")
+
     if path.suffix == ".json":
         return True
     if path.suffix == ".html":
@@ -49,7 +73,22 @@ def tidyable_file(path):
     return False
 
 
-def tidy_dir(path, level=0, prefix="", html_tidy_config=None):
+def tidy_dir(
+    path: Path, level: int = 0, prefix: str = "", html_tidy_config: Path = None
+) -> dict[str, list[Path]]:
+    if not isinstance(path, Path):
+        raise TypeError("path must be a Path object")
+    if not path.is_dir():
+        raise NotADirectoryError(f"{path} is not a directory")
+    if not isinstance(level, int) or level < 0:
+        raise ValueError("level must be a non-negative integer")
+    if not isinstance(prefix, str):
+        raise TypeError("prefix must be a string")
+    if html_tidy_config is not None and not isinstance(html_tidy_config, Path):
+        raise TypeError("html_tidy_config must be a Path object or None")
+    if html_tidy_config is not None and not html_tidy_config.is_file():
+        raise FileNotFoundError(f"{html_tidy_config} is not a file")
+
     prefix_file = prefix + "├── "
     if level == 0:
         print(f"tidy dir {path}")

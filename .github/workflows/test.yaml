@@ -1,4 +1,4 @@
-name: format
+name: test
 
 on:
   pull_request:
@@ -15,6 +15,6 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: "3.x"
-    - run: pip install black
-    - run: black src tests
-    - run: git diff --exit-code
+    - run: pip install .
+    - run: pip install pytest
+    - run: pytest
