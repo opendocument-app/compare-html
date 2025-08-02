@@ -3,8 +3,12 @@ name: docker
 on:
   push:
     branches:
-      - main
+      - 'main'
+    tags:
+      - 'v*'
   pull_request:
+    branches:
+      - 'main'
 
 jobs:
   build_image:
