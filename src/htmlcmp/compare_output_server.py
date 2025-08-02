@@ -52,7 +52,7 @@ class Observer:
             if not a.is_dir() or not b.is_dir():
                 raise ValueError("Both paths must be directories")
 
-            common_path = a / Config.path_a
+            common_path = a.relative_to(Config.path_a)
 
             left = sorted(p.name for p in a.iterdir())
             right = sorted(p.name for p in b.iterdir())
@@ -106,8 +106,6 @@ class Comparator:
     def compare(self, path: Path):
         if not isinstance(path, Path):
             raise TypeError("Path must be of type Path")
-        if not path.is_file():
-            raise ValueError("Path must be a file")
         if path not in self._future:
             raise RuntimeError("Path not submitted for comparison")
 
@@ -166,7 +164,7 @@ def root():
         if not a.is_dir() or not b.is_dir():
             raise ValueError("Both paths must be directories")
 
-        common_path = a / Config.path_a
+        common_path = a.relative_to(Config.path_a)
 
         left = sorted(p.name for p in a.iterdir())
         right = sorted(p.name for p in b.iterdir())
