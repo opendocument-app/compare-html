@@ -12,8 +12,8 @@ from flask import Flask, send_from_directory, send_file
 import watchdog.observers
 import watchdog.events
 
-from compare_output import comparable_file, compare_files
-from html_render_diff import get_browser, html_render_diff
+from htmlcmp.compare_output import comparable_file, compare_files
+from htmlcmp.html_render_diff import get_browser, html_render_diff
 
 
 class Config:
