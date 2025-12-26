@@ -40,7 +40,7 @@ class Observer:
                 event_type = event.event_type
                 src_path = Path(event.src_path)
 
-                logger.verbose(f"Watchdog event: {event_type} {src_path}")
+                logger.debug(f"Watchdog event: {event_type} {src_path}")
 
                 if event_type not in ["moved", "deleted", "created", "modified"]:
                     return
@@ -64,7 +64,7 @@ class Observer:
         self._observer.start()
 
         def init_compare(a: Path, b: Path):
-            logger.verbose(f"Initial compare: {a} vs {b}")
+            logger.debug(f"Initial compare: {a} vs {b}")
 
             if not isinstance(a, Path) or not isinstance(b, Path):
                 raise TypeError("Paths must be of type Path")
@@ -350,13 +350,13 @@ def file(variant: str, path: str):
 
 def setup_logging(verbosity: int):
     if verbosity >= 3:
-        level = logging.VERBOSE
-    elif verbosity == 2:
         level = logging.DEBUG
-    elif verbosity == 1:
+    elif verbosity == 2:
         level = logging.INFO
-    else:
+    elif verbosity == 1:
         level = logging.WARNING
+    else:
+        level = logging.ERROR
 
     formatter = logging.Formatter(
         fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
