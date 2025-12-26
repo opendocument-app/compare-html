@@ -33,12 +33,14 @@ class Observer:
                 self._path = path
 
             def dispatch(self, event):
-                if event.event_type in ["opened"]:
+                event_type = event.event_type
+                src_path = Path(event.src_path)
+
+                if event_type in ["opened"]:
                     return
 
-                if event.src_path.is_file():
-                    Config.comparator.submit(event.src_path.relative_to(self._path))
-
+                if src_path.is_file():
+                    Config.comparator.submit(src_path.relative_to(self._path))
         self._observer = watchdog.observers.Observer()
         self._observer.schedule(Handler(Config.path_a), Config.path_a, recursive=True)
         self._observer.schedule(Handler(Config.path_b), Config.path_b, recursive=True)
