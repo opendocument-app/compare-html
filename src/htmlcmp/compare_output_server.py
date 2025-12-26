@@ -17,6 +17,9 @@ from htmlcmp.compare_output import comparable_file, compare_files
 from htmlcmp.html_render_diff import get_browser, html_render_diff
 
 
+logger = logging.getLogger(__name__)
+
+
 class Config:
     path_a: Path = None
     path_b: Path = None
@@ -37,31 +40,31 @@ class Observer:
                 event_type = event.event_type
                 src_path = Path(event.src_path)
 
-                logging.verbose(f"Watchdog event: {event_type} {src_path}")
+                logger.verbose(f"Watchdog event: {event_type} {src_path}")
 
                 if event_type not in ["moved", "deleted", "created", "modified"]:
                     return
 
                 if src_path.is_file():
-                    logging.debug(
+                    logger.debug(
                         f"Submit watchdog file change: {event_type} {src_path}"
                     )
                     Config.comparator.submit(src_path.relative_to(self._path))
 
-        logging.info("Create watchdog for paths:")
-        logging.info(f"  A: {Config.path_a}")
-        logging.info(f"  B: {Config.path_b}")
+        logger.info("Create watchdog for paths:")
+        logger.info(f"  A: {Config.path_a}")
+        logger.info(f"  B: {Config.path_b}")
 
         self._observer = watchdog.observers.Observer()
         self._observer.schedule(Handler(Config.path_a), Config.path_a, recursive=True)
         self._observer.schedule(Handler(Config.path_b), Config.path_b, recursive=True)
 
     def start(self):
-        logging.info("Starting watchdog observer")
+        logger.info("Starting watchdog observer")
         self._observer.start()
 
         def init_compare(a: Path, b: Path):
-            logging.verbose(f"Initial compare: {a} vs {b}")
+            logger.verbose(f"Initial compare: {a} vs {b}")
 
             if not isinstance(a, Path) or not isinstance(b, Path):
                 raise TypeError("Paths must be of type Path")
@@ -77,23 +80,23 @@ class Observer:
 
             for name in common:
                 if (a / name).is_file() and comparable_file(a / name):
-                    logging.debug(
+                    logger.debug(
                         f"Submit initial file comparison: {common_path / name}"
                     )
                     Config.comparator.submit(common_path / name)
                 elif (a / name).is_dir():
                     init_compare(a / name, b / name)
 
-        logging.info("Kick off initial comparison of all files")
+        logger.info("Kick off initial comparison of all files")
         init_compare(Config.path_a, Config.path_b)
-        logging.info("Initial comparison submitted")
+        logger.info("Initial comparison submitted")
 
     def stop(self):
-        logging.info("Stopping watchdog observer")
+        logger.info("Stopping watchdog observer")
         self._observer.stop()
 
     def join(self):
-        logging.info("Joining watchdog observer")
+        logger.info("Joining watchdog observer")
         self._observer.join()
 
 
@@ -105,7 +108,7 @@ class Comparator:
                 browser = get_browser(driver=Config.driver)
                 Config.thread_local.browser = browser
 
-        logging.info(f"Creating comparator with {max_workers} workers")
+        logger.info(f"Creating comparator with {max_workers} workers")
 
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, initializer=initializer
@@ -114,7 +117,7 @@ class Comparator:
         self._future = {}
 
     def submit(self, path: Path):
-        logging.debug(f"Submitting comparison for path: {path}")
+        logger.debug(f"Submitting comparison for path: {path}")
 
         if not isinstance(path, Path):
             raise TypeError("Path must be of type Path")
@@ -131,7 +134,7 @@ class Comparator:
         self._future[path] = self._executor.submit(self.compare, path)
 
     def compare(self, path: Path):
-        logging.debug(f"Comparing files for path: {path}")
+        logger.debug(f"Comparing files for path: {path}")
 
         if not isinstance(path, Path):
             raise TypeError("Path must be of type Path")
@@ -148,7 +151,7 @@ class Comparator:
         self._future.pop(path)
 
     def result(self, path: Path):
-        logging.debug(f"Getting comparison result for path: {path}")
+        logger.debug(f"Getting comparison result for path: {path}")
 
         if not isinstance(path, Path):
             raise TypeError("Path must be of type Path")
@@ -158,7 +161,7 @@ class Comparator:
         return "unknown"
 
     def result_symbol(self, path: Path):
-        logging.debug(f"Getting comparison result symbol for path: {path}")
+        logger.debug(f"Getting comparison result symbol for path: {path}")
 
         if not isinstance(path, Path):
             raise TypeError("Path must be of type Path")
@@ -173,7 +176,7 @@ class Comparator:
         return "⛔"
 
     def result_css(self, path: Path):
-        logging.debug(f"Getting comparison result CSS for path: {path}")
+        logger.debug(f"Getting comparison result CSS for path: {path}")
 
         if not isinstance(path, Path):
             raise TypeError("Path must be of type Path")
@@ -193,7 +196,7 @@ app = Flask("compare")
 
 @app.route("/")
 def root():
-    logging.debug("Generating root directory listing")
+    logger.debug("Generating root directory listing")
 
     def print_tree(a: Path, b: Path):
         if not isinstance(a, Path) or not isinstance(b, Path):
@@ -274,7 +277,7 @@ def root():
 
 @app.route("/compare/<path:path>")
 def compare(path: str):
-    logging.debug(f"Generating comparison page for path: {path}")
+    logger.debug(f"Generating comparison page for path: {path}")
 
     if not isinstance(path, str):
         raise TypeError("Path must be a string")
@@ -316,7 +319,7 @@ iframe_b.contentWindow.addEventListener('scroll', function(event) {{
 
 @app.route("/image_diff/<path:path>")
 def image_diff(path: str):
-    logging.debug(f"Generating image diff for path: {path}")
+    logger.debug(f"Generating image diff for path: {path}")
 
     if not isinstance(path, str):
         raise TypeError("Path must be a string")
@@ -334,7 +337,7 @@ def image_diff(path: str):
 
 @app.route("/file/<variant>/<path:path>")
 def file(variant: str, path: str):
-    logging.debug(f"Serving file for variant: {variant}, path: {path}")
+    logger.debug(f"Serving file for variant: {variant}, path: {path}")
 
     if not isinstance(variant, str) or not isinstance(path, str):
         raise TypeError("Variant and path must be strings")
@@ -355,10 +358,6 @@ def setup_logging(verbosity: int):
     else:
         level = logging.WARNING
 
-    logger = logging.getLogger()
-    logger.setLevel(level)
-    logger.handlers.clear()
-
     formatter = logging.Formatter(
         fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
@@ -366,7 +365,11 @@ def setup_logging(verbosity: int):
 
     console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    root_logger.handlers.clear()
+    root_logger.addHandler(console_handler)
 
 
 def main():
