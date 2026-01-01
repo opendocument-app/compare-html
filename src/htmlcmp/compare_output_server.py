@@ -253,6 +253,28 @@ class Comparator:
 app = Flask("compare")
 
 
+@app.route("/script.js")
+def script_js():
+    logger.debug("Serving script.js")
+
+    return """
+function updateRef(path) {
+  fetch(`/update_ref/${path}`)
+    .then(response => {
+      if (response.ok) {
+        alert(`Reference updated for ${path}`);
+        location.reload();
+      } else {
+        alert(`Failed to update reference for ${path}: ${response.statusText}`);
+      }
+    })
+    .catch(error => {
+      alert(`Error updating reference for ${path}: ${error}`);
+    });
+}
+"""
+
+
 @app.route("/")
 def root():
     logger.debug("Generating root directory listing")
@@ -444,6 +466,7 @@ tr {
   padding-left: calc(1.0rem * var(--depth));
 }
 </style>
+<script src="/script.js"></script>
 </head>
 <body>
 """
@@ -507,21 +530,6 @@ function toggleAll(show) {
       }
     });
 }
-
-function updateRef(path) {
-  fetch(`/update_ref/${path}`)
-    .then(response => {
-      if (response.ok) {
-        alert(`Reference updated for ${path}`);
-        location.reload();
-      } else {
-        alert(`Failed to update reference for ${path}: ${response.statusText}`);
-      }
-    })
-    .catch(error => {
-      alert(`Error updating reference for ${path}: ${error}`);
-    });
-}
 </script>
 </body>
 </html>
@@ -553,6 +561,7 @@ def compare(path: str):
 <style>
 html,body {{height:100%;margin:0;}}
 </style>
+<script src="/script.js"></script>
 </head>
 <body style="display:flex;flex-flow:row;">
 <div style="display:flex;flex:1;flex-flow:column;margin:5px;">
@@ -561,6 +570,7 @@ html,body {{height:100%;margin:0;}}
 </div>
 <div style="display:flex;flex:0 0 50px;flex-flow:column;">
   <a href="/image_diff/{path}" target="_blank">diff</a>
+  <button onclick="updateRef('{path}')">▶</button>
   <img src="/image_diff/{path}" width="50" height="0" style="flex:1;">
 </div>
 <div style="display:flex;flex:1;flex-flow:column;margin:5px;">
