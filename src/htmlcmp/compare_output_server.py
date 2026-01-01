@@ -616,6 +616,27 @@ def file(variant: str, path: str):
     return send_from_directory(variant_root, path)
 
 
+@app.route("/update_ref/<path:path>")
+def update_ref(path: str):
+    logger.debug(f"Updating reference for path: {path}")
+
+    if not isinstance(path, str):
+        raise TypeError("Path must be a string")
+
+    src = Config.path_b / path
+    dst = Config.path_a / path
+
+    if not src.exists():
+        return f"Source file does not exist: {src}", 404
+
+    if src.is_file():
+        shutil.copy2(src, dst)
+    else:
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+
+    return "Reference updated", 200
+
+
 def verbosity_to_level(verbosity: int) -> int:
     if verbosity >= 3:
         return logging.DEBUG
@@ -657,27 +678,6 @@ def setup_logging(
         file_handler.setLevel(file_level)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
-
-
-@app.route("/update_ref/<path:path>")
-def update_ref(path: str):
-    logger.debug(f"Updating reference for path: {path}")
-
-    if not isinstance(path, str):
-        raise TypeError("Path must be a string")
-
-    src = Config.path_b / path
-    dst = Config.path_a / path
-
-    if not src.exists():
-        return f"Source file does not exist: {src}", 404
-
-    if src.is_file():
-        shutil.copy2(src, dst)
-    else:
-        shutil.copytree(src, dst, dirs_exist_ok=True)
-
-    return "Reference updated", 200
 
 
 def main():
