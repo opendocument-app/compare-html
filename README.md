@@ -35,3 +35,15 @@ docker run -ti \
 ```bash
 docker build --tag odr_core_test test/docker
 ```
+
+## Run locally
+
+```bash
+PYTHONPATH=$(pwd)/src:$PYTHONPATH python ./src/htmlcmp/compare_output_server.py \
+  /path/to/REFERENCE \
+  /path/to/MONITORED \
+  --compare \
+  --driver firefox \
+  --port 8000 \
+  -vv
+```

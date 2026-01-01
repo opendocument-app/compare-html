@@ -31,7 +31,7 @@ class Config:
     thread_local = threading.local()
 
 
-def result_symbol(result: str):
+def result_symbol(result: str) -> str | None:
     if not isinstance(result, str):
         raise TypeError("Result must be of type str")
 
@@ -41,10 +41,10 @@ def result_symbol(result: str):
         return "✔"
     if result == "different":
         return "❌"
-    return "⛔"
+    return None
 
 
-def result_css(result: str):
+def result_css(result: str) -> str | None:
     if not isinstance(result, str):
         raise TypeError("Result must be of type str")
 
@@ -53,8 +53,8 @@ def result_css(result: str):
     if result == "same":
         return "color:green;"
     if result == "different":
-        return "color:orange;"
-    return "color:red;"
+        return "color:red;"
+    return None
 
 
 class Observer:
@@ -86,7 +86,7 @@ class Observer:
         self._observer.schedule(Handler(Config.path_a), Config.path_a, recursive=True)
         self._observer.schedule(Handler(Config.path_b), Config.path_b, recursive=True)
 
-    def start(self):
+    def start(self) -> None:
         logger.info("Starting watchdog observer")
         self._observer.start()
 
@@ -118,11 +118,11 @@ class Observer:
         init_compare(Config.path_a, Config.path_b)
         logger.info("Initial comparison submitted")
 
-    def stop(self):
+    def stop(self) -> None:
         logger.info("Stopping watchdog observer")
         self._observer.stop()
 
-    def join(self):
+    def join(self) -> None:
         logger.info("Joining watchdog observer")
         self._observer.join()
 
@@ -130,10 +130,11 @@ class Observer:
 class Comparator:
     def __init__(self, max_workers: int):
         def initializer():
-            browser = getattr(Config.thread_local, "browser", None)
-            if browser is None:
-                browser = get_browser(driver=Config.driver)
-                Config.thread_local.browser = browser
+            if Config.driver is not None:
+                browser = getattr(Config.thread_local, "browser", None)
+                if browser is None:
+                    browser = get_browser(driver=Config.driver)
+                    Config.thread_local.browser = browser
 
         logger.info(f"Creating comparator with {max_workers} workers")
 
@@ -143,11 +144,15 @@ class Comparator:
         self._result = {}
         self._future = {}
 
-    def submit(self, path: Path):
+    def submit(self, path: Path) -> None:
         logger.debug(f"Submitting comparison for path: {path}")
 
         if not isinstance(path, Path):
             raise TypeError("Path must be of type Path")
+
+        if path.suffix.lower() in [".html", ".htm"] and Config.driver is None:
+            logger.debug(f"Skipping submission of HTML file without browser: {path}")
+            return
 
         if path in self._future:
             try:
@@ -160,7 +165,7 @@ class Comparator:
         self._result[path] = "pending"
         self._future[path] = self._executor.submit(self.compare, path)
 
-    def compare(self, path: Path):
+    def compare(self, path: Path) -> None:
         logger.debug(f"Comparing files for path: {path}")
 
         if not isinstance(path, Path):
@@ -177,7 +182,7 @@ class Comparator:
         self._result[path] = "same" if result else "different"
         self._future.pop(path)
 
-    def result(self, path: Path):
+    def result(self, path: Path) -> str | None:
         logger.debug(f"Getting comparison result for path: {path}")
 
         if not isinstance(path, Path):
@@ -220,9 +225,13 @@ class Comparator:
 
             return functools.reduce(
                 lambda a, b: (
-                    "pending"
-                    if "pending" in (a, b)
-                    else ("different" if "different" in (a, b) else "same")
+                    None
+                    if None in (a, b)
+                    else (
+                        "pending"
+                        if "pending" in (a, b)
+                        else "different" if "different" in (a, b) else "same"
+                    )
                 ),
                 [self.result(path / name) for name in common]
                 + [
@@ -235,8 +244,8 @@ class Comparator:
                 "same",
             )
 
-        logger.warning(f"No comparison result for path: {path}")
-        return "unknown"
+        logger.debug(f"No comparison result for path: {path}")
+        return None
 
 
 app = Flask("compare")
@@ -248,7 +257,7 @@ def root():
 
     current_entry_id = 0
 
-    def next_entry_id():
+    def next_entry_id() -> int:
         nonlocal current_entry_id
         entry_id = current_entry_id
         current_entry_id += 1
@@ -594,9 +603,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("a", type=Path, help="Path to the first directory")
     parser.add_argument("b", type=Path, help="Path to the second directory")
-    parser.add_argument(
-        "--driver", choices=["chrome", "firefox", "phantomjs"], default="firefox"
-    )
+    parser.add_argument("--driver", choices=["chrome", "firefox", "phantomjs"])
     parser.add_argument("--max-workers", type=int, default=1)
     parser.add_argument("--compare", action="store_true")
     parser.add_argument("--port", type=int, default=5000)
@@ -614,7 +621,9 @@ def main():
     Config.path_a = args.a
     Config.path_b = args.b
     Config.driver = args.driver
-    Config.browser = get_browser(driver=args.driver)
+    Config.browser = (
+        get_browser(driver=args.driver) if args.driver is not None else None
+    )
 
     if args.compare:
         Config.comparator = Comparator(max_workers=args.max_workers)
