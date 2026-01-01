@@ -3,6 +3,7 @@
 
 import io
 import sys
+import shutil
 import argparse
 import logging
 import threading
@@ -29,6 +30,7 @@ class Config:
     comparator = None
     browser = None
     thread_local = threading.local()
+    log_file: Path = None
 
 
 def result_symbol(result: str) -> str | None:
@@ -293,7 +295,7 @@ def root():
             result += "<td></td>"
 
         if is_comparable:
-            main = f'<a href="/compare/{path}">{name}</a>'
+            main = f'<a href="/compare/{path}" target="_blank">{name}</a>'
         else:
             main = f"{name}"
         if cmp_result is not None:
@@ -305,6 +307,10 @@ def root():
             result += f"<td></td>"
         result += f'<td class="main" style="{style}">{main}</td>'
         result += f"<td>{message}</td>"
+
+        result += (
+            f"<td><button onclick=\"updateRef('{path}')\">update ref</button></td>"
+        )
 
         result += "</tr>"
 
@@ -444,9 +450,16 @@ tr {
 
     result += "<p>"
     result += "comparing<br>"
-    result += f"A: {Config.path_a}<br>"
-    result += f"B: {Config.path_b}"
+    result += f"Reference: {Config.path_a}<br>"
+    result += f"Monitored: {Config.path_b}"
     result += "</p>"
+
+    if Config.log_file is not None:
+        result += "<p>"
+        result += (
+            f'<a href="/logfile" target="_blank">View log file: {Config.log_file}</a>'
+        )
+        result += "</p>"
 
     result += "<p>"
     result += '<button onclick="toggleAll(true)">Expand All</button>'
@@ -455,7 +468,7 @@ tr {
 
     result += "<table>"
     result += "<thead>"
-    result += "<tr><td></td><td></td><td>Name</td><td>Message</td></tr>"
+    result += "<tr><td></td><td></td><td>Name</td><td>Message</td><td>Actions</td></tr>"
     result += "</thead>"
     result += "<tbody>"
     result += generate_tree(Config.path_a, Config.path_b, "", None, 0)
@@ -494,12 +507,37 @@ function toggleAll(show) {
       }
     });
 }
+
+function updateRef(path) {
+  fetch(`/update_ref/${path}`)
+    .then(response => {
+      if (response.ok) {
+        alert(`Reference updated for ${path}`);
+        location.reload();
+      } else {
+        alert(`Failed to update reference for ${path}: ${response.statusText}`);
+      }
+    })
+    .catch(error => {
+      alert(`Error updating reference for ${path}: ${error}`);
+    });
+}
 </script>
 </body>
 </html>
 """
 
     return result
+
+
+@app.route("/logfile")
+def logfile():
+    logger.debug("Serving log file")
+
+    if Config.log_file is None:
+        return "No log file configured", 404
+
+    return send_from_directory(Config.log_file.parent, Config.log_file.name)
 
 
 @app.route("/compare/<path:path>")
@@ -518,15 +556,15 @@ html,body {{height:100%;margin:0;}}
 </head>
 <body style="display:flex;flex-flow:row;">
 <div style="display:flex;flex:1;flex-flow:column;margin:5px;">
-  <a href="/file/a/{path}">{Config.path_a / path}</a>
+  <a href="/file/a/{path}" target="_blank">{Config.path_a / path}</a>
   <iframe id="a" src="/file/a/{path}" title="a" frameborder="0" align="left" style="flex:1;"></iframe>
 </div>
 <div style="display:flex;flex:0 0 50px;flex-flow:column;">
-  <a href="/image_diff/{path}">diff</a>
+  <a href="/image_diff/{path}" target="_blank">diff</a>
   <img src="/image_diff/{path}" width="50" height="0" style="flex:1;">
 </div>
 <div style="display:flex;flex:1;flex-flow:column;margin:5px;">
-  <a href="/file/b/{path}">{Config.path_b / path}</a>
+  <a href="/file/b/{path}" target="_blank">{Config.path_b / path}</a>
   <iframe id="b" src="/file/b/{path}" title="b" frameborder="0" align="right" style="flex:1;"></iframe>
 </div>
 <script>
@@ -550,6 +588,9 @@ def image_diff(path: str):
 
     if not isinstance(path, str):
         raise TypeError("Path must be a string")
+
+    if Config.driver is None:
+        return "Image diff not available without browser driver", 404
 
     diff, _ = html_render_diff(
         Config.path_a / path,
@@ -575,15 +616,25 @@ def file(variant: str, path: str):
     return send_from_directory(variant_root, path)
 
 
-def setup_logging(verbosity: int):
+def verbosity_to_level(verbosity: int) -> int:
     if verbosity >= 3:
-        level = logging.DEBUG
+        return logging.DEBUG
     elif verbosity == 2:
-        level = logging.INFO
+        return logging.INFO
     elif verbosity == 1:
-        level = logging.WARNING
+        return logging.WARNING
     else:
-        level = logging.ERROR
+        return logging.ERROR
+
+
+def setup_logging(
+    verbosity: int, log_file: Path = None, log_file_verbosity: int = None
+) -> None:
+    level = verbosity_to_level(verbosity)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    root_logger.handlers.clear()
 
     formatter = logging.Formatter(
         fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -591,18 +642,48 @@ def setup_logging(verbosity: int):
     )
 
     console_handler = logging.StreamHandler(sys.stderr)
+    console_handler.setLevel(level)
     console_handler.setFormatter(formatter)
-
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-    root_logger.handlers.clear()
     root_logger.addHandler(console_handler)
+
+    if log_file is not None:
+        file_level = (
+            verbosity_to_level(log_file_verbosity)
+            if log_file_verbosity is not None
+            else level
+        )
+
+        file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
+        file_handler.setLevel(file_level)
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
+
+
+@app.route("/update_ref/<path:path>")
+def update_ref(path: str):
+    logger.debug(f"Updating reference for path: {path}")
+
+    if not isinstance(path, str):
+        raise TypeError("Path must be a string")
+
+    src = Config.path_b / path
+    dst = Config.path_a / path
+
+    if not src.exists():
+        return f"Source file does not exist: {src}", 404
+
+    if src.is_file():
+        shutil.copy2(src, dst)
+    else:
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+
+    return "Reference updated", 200
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("a", type=Path, help="Path to the first directory")
-    parser.add_argument("b", type=Path, help="Path to the second directory")
+    parser.add_argument("ref", type=Path, help="Path to the reference directory")
+    parser.add_argument("mon", type=Path, help="Path to the monitored directory")
     parser.add_argument("--driver", choices=["chrome", "firefox", "phantomjs"])
     parser.add_argument("--max-workers", type=int, default=1)
     parser.add_argument("--compare", action="store_true")
@@ -614,16 +695,25 @@ def main():
         default=0,
         help="Increase verbosity (-v, -vv, -vvv)",
     )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        help="Path to log file",
+    )
+    parser.add_argument(
+        "--log-file-verbosity", type=int, help="Log file verbosity level"
+    )
     args = parser.parse_args()
 
-    setup_logging(args.verbose)
+    setup_logging(args.verbose, args.log_file, args.log_file_verbosity)
 
-    Config.path_a = args.a
-    Config.path_b = args.b
+    Config.path_a = args.ref
+    Config.path_b = args.mon
     Config.driver = args.driver
     Config.browser = (
         get_browser(driver=args.driver) if args.driver is not None else None
     )
+    Config.log_file = args.log_file
 
     if args.compare:
         Config.comparator = Comparator(max_workers=args.max_workers)
