@@ -6,6 +6,7 @@ import sys
 import argparse
 import logging
 import threading
+import functools
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -28,6 +29,32 @@ class Config:
     comparator = None
     browser = None
     thread_local = threading.local()
+
+
+def result_symbol(result: str):
+    if not isinstance(result, str):
+        raise TypeError("Result must be of type str")
+
+    if result == "pending":
+        return "🔄"
+    if result == "same":
+        return "✔"
+    if result == "different":
+        return "❌"
+    return "⛔"
+
+
+def result_css(result: str):
+    if not isinstance(result, str):
+        raise TypeError("Result must be of type str")
+
+    if result == "pending":
+        return "color:blue;"
+    if result == "same":
+        return "color:green;"
+    if result == "different":
+        return "color:orange;"
+    return "color:red;"
 
 
 class Observer:
@@ -158,37 +185,58 @@ class Comparator:
 
         if path in self._result:
             return self._result[path]
+
+        if (Config.path_a / path).is_dir():
+            a = Config.path_a / path
+            b = Config.path_b / path
+
+            left = sorted(p.name for p in a.iterdir())
+            right = sorted(p.name for p in b.iterdir())
+
+            left_relevant = sorted(
+                [
+                    name
+                    for name in left
+                    if (a / name).is_dir()
+                    or ((a / name).is_file() and comparable_file(a / name))
+                ]
+            )
+            right_relevant = sorted(
+                [
+                    name
+                    for name in right
+                    if (b / name).is_dir()
+                    or ((b / name).is_file() and comparable_file(b / name))
+                ]
+            )
+
+            common = [name for name in left_relevant if name in right_relevant]
+            left_missing = [
+                name for name in right_relevant if name not in left_relevant
+            ]
+            right_missing = [
+                name for name in left_relevant if name not in right_relevant
+            ]
+
+            return functools.reduce(
+                lambda a, b: (
+                    "pending"
+                    if "pending" in (a, b)
+                    else ("different" if "different" in (a, b) else "same")
+                ),
+                [self.result(path / name) for name in common]
+                + [
+                    (
+                        "different"
+                        if len(left_missing) + len(right_missing) > 0
+                        else "same"
+                    )
+                ],
+                "same",
+            )
+
+        logger.warning(f"No comparison result for path: {path}")
         return "unknown"
-
-    def result_symbol(self, path: Path):
-        logger.debug(f"Getting comparison result symbol for path: {path}")
-
-        if not isinstance(path, Path):
-            raise TypeError("Path must be of type Path")
-
-        result = self.result(path)
-        if result == "pending":
-            return "🔄"
-        if result == "same":
-            return "✔"
-        if result == "different":
-            return "❌"
-        return "⛔"
-
-    def result_css(self, path: Path):
-        logger.debug(f"Getting comparison result CSS for path: {path}")
-
-        if not isinstance(path, Path):
-            raise TypeError("Path must be of type Path")
-
-        result = self.result(path)
-        if result == "pending":
-            return "color:blue;"
-        if result == "same":
-            return "color:green;"
-        if result == "different":
-            return "color:orange;"
-        return "color:red;"
 
 
 app = Flask("compare")
@@ -198,13 +246,83 @@ app = Flask("compare")
 def root():
     logger.debug("Generating root directory listing")
 
-    def print_tree(a: Path, b: Path):
+    current_entry_id = 0
+
+    def next_entry_id():
+        nonlocal current_entry_id
+        entry_id = current_entry_id
+        current_entry_id += 1
+        return entry_id
+
+    def generate_entry(
+        entry_id: int,
+        parrent_id: int | None,
+        depth: int,
+        is_directory: bool,
+        is_comparable: bool,
+        path: Path,
+        name: str,
+        message: str = "",
+        cmp_result: str = None,
+    ) -> str:
+        result = ""
+
+        if cmp_result is None and Config.comparator is not None:
+            cmp_result = Config.comparator.result(path)
+        is_hidden = (
+            Config.comparator is not None
+            and Config.comparator.result(path.parent) == "same"
+        )
+        is_collapsed = cmp_result == "same"
+
+        hidden_str = "hidden" if is_hidden else ""
+        result += f'<tr data-entry-id="{entry_id}" data-parent-id="{"" if parrent_id is None else parrent_id}" data-depth="{depth}" {hidden_str}>'
+
+        if is_directory:
+            result += f'<td><button class="toggle">{"▶" if is_collapsed else "▼"}</button></td>'
+        else:
+            result += "<td></td>"
+
+        if is_comparable:
+            main = f'<a href="/compare/{path}">{name}</a>'
+        else:
+            main = f"{name}"
+        if cmp_result is not None:
+            status = result_symbol(cmp_result)
+            style = result_css(cmp_result)
+            result += f'<td style="{style}">{status}</td>'
+        else:
+            style = ""
+            result += f"<td></td>"
+        result += f'<td class="main" style="{style}">{main}</td>'
+        result += f"<td>{message}</td>"
+
+        result += "</tr>"
+
+        return result
+
+    def generate_tree(
+        a: Path, b: Path, name: str, parrent_id: int | None, depth: int
+    ) -> str:
+        result = ""
+
         if not isinstance(a, Path) or not isinstance(b, Path):
             raise TypeError("Paths must be of type Path")
         if not a.is_dir() or not b.is_dir():
             raise ValueError("Both paths must be directories")
 
         common_path = a.relative_to(Config.path_a)
+
+        directory_id = next_entry_id()
+        result += generate_entry(
+            directory_id,
+            parrent_id,
+            depth,
+            True,
+            False,
+            common_path,
+            name + "/",
+        )
 
         left = sorted(p.name for p in a.iterdir())
         right = sorted(p.name for p in b.iterdir())
@@ -230,48 +348,148 @@ def root():
         common_files = [name for name in left_files if name in right_files]
         common_dirs = [name for name in left_dirs if name in right_dirs]
 
-        result = "<ul>"
-
-        left_files_missing = " ".join(
-            [name for name in right_files if name not in left_files]
-        )
-        right_files_missing = " ".join(
-            [name for name in left_files if name not in right_files]
-        )
-        left_dirs_missing = " ".join(
-            [name for name in right_dirs if name not in left_dirs]
-        )
-        right_dirs_missing = " ".join(
-            [name for name in left_dirs if name not in right_dirs]
-        )
-        if left_files_missing:
-            result += f"<li><b>A files missing: {left_files_missing}</b></li>"
-        if right_files_missing:
-            result += f"<li><b>B files missing: {right_files_missing}</b></li>"
-        if left_dirs_missing:
-            result += f"<li><b>A dirs missing: {left_dirs_missing}</b></li>"
-        if right_dirs_missing:
-            result += f"<li><b>B dirs missing: {right_dirs_missing}</b></li>"
+        left_files_missing = [name for name in right_files if name not in left_files]
+        right_files_missing = [name for name in left_files if name not in right_files]
+        left_dirs_missing = [name for name in right_dirs if name not in left_dirs]
+        right_dirs_missing = [name for name in left_dirs if name not in right_dirs]
+        for name in left_files_missing:
+            result += generate_entry(
+                next_entry_id(),
+                directory_id,
+                depth + 1,
+                False,
+                False,
+                common_path / name,
+                name,
+                "file missing in A",
+                cmp_result="different",
+            )
+        for name in right_files_missing:
+            result += generate_entry(
+                next_entry_id(),
+                directory_id,
+                depth + 1,
+                False,
+                False,
+                common_path / name,
+                name,
+                "file missing in B",
+                cmp_result="different",
+            )
+        for name in left_dirs_missing:
+            result += generate_entry(
+                next_entry_id(),
+                directory_id,
+                depth + 1,
+                False,
+                False,
+                common_path / name,
+                name + "/",
+                "dir missing in A",
+                cmp_result="different",
+            )
+        for name in right_dirs_missing:
+            result += generate_entry(
+                next_entry_id(),
+                directory_id,
+                depth + 1,
+                False,
+                False,
+                common_path / name,
+                name + "/",
+                "dir missing in B",
+                cmp_result="different",
+            )
 
         for name in common_files:
-            if Config.comparator is None:
-                result += f'<li><a href="/compare/{common_path / name}">{name}</a></li>'
-            else:
-                symbol = Config.comparator.result_symbol(common_path / name)
-                css = Config.comparator.result_css(common_path / name)
-                result += f'<li style="{css}"><a style="{css}" href="/compare/{common_path / name}">{name}</a> {symbol}</li>'
+            result += generate_entry(
+                next_entry_id(),
+                directory_id,
+                depth + 1,
+                False,
+                True,
+                common_path / name,
+                name,
+                "",
+            )
 
         for name in common_dirs:
-            result += f"<li>{name}"
-            result += print_tree(a / name, b / name)
-            result += "</li>"
+            result += generate_tree(a / name, b / name, name, directory_id, depth + 1)
 
-        result += "</ul>"
         return result
 
-    result = ""
-    result += f"<p>compare A {Config.path_a} vs B {Config.path_b}</p>"
-    result += print_tree(Config.path_a, Config.path_b)
+    result = """<!DOCTYPE html>
+<html>
+<head>
+<style>
+tr {
+  --depth: attr(data-depth number);
+}
+.main {
+  padding-left: calc(1.0rem * var(--depth));
+}
+</style>
+</head>
+<body>
+"""
+
+    result += "<p>"
+    result += "comparing<br>"
+    result += f"A: {Config.path_a}<br>"
+    result += f"B: {Config.path_b}"
+    result += "</p>"
+
+    result += "<p>"
+    result += '<button onclick="toggleAll(true)">Expand All</button>'
+    result += '<button onclick="toggleAll(false)">Collapse All</button>'
+    result += "</p>"
+
+    result += "<table>"
+    result += "<thead>"
+    result += "<tr><td></td><td></td><td>Name</td><td>Message</td></tr>"
+    result += "</thead>"
+    result += "<tbody>"
+    result += generate_tree(Config.path_a, Config.path_b, "", None, 0)
+    result += "</tbody>"
+    result += "</table>"
+
+    result += """
+<script>
+document.addEventListener("click", e => {
+  if (!e.target.classList.contains("toggle")) return;
+
+  const row = e.target.closest("tr");
+  const id = row.dataset.entryId;
+  const expanded = e.target.textContent === "▼";
+
+  e.target.textContent = expanded ? "▶" : "▼";
+
+  toggleChildren(id, !expanded);
+});
+
+function toggleChildren(parentId, show) {
+  document.querySelectorAll(`tr[data-parent-id="${parentId}"]`)
+    .forEach(child => {
+      child.hidden = !show;
+    });
+}
+
+function toggleAll(show) {
+  document.querySelectorAll("tr")
+    .forEach(row => {
+      const isRoot = !row.dataset.parentId;
+      row.hidden = !isRoot && !show;
+      const toggle = row.querySelector(".toggle");
+      if (toggle) {
+        toggle.textContent = show ? "▼" : "▶";
+      }
+    });
+}
+</script>
+</body>
+</html>
+"""
+
     return result
 
 
@@ -313,7 +531,7 @@ iframe_b.contentWindow.addEventListener('scroll', function(event) {{
 }});
 </script>
 </body>
-</html> 
+</html>
 """
 
 
