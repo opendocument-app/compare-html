@@ -516,6 +516,11 @@ function toggleChildren(parentId, show) {
   document.querySelectorAll(`tr[data-parent-id="${parentId}"]`)
     .forEach(child => {
       child.hidden = !show;
+      if (!show) {
+        toggleChildren(child.dataset.entryId, false);
+        const toggle = child.querySelector(".toggle");
+        if (toggle) toggle.textContent = "▶";
+      }
     });
 }
 
