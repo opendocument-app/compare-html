@@ -10,7 +10,7 @@ from pathlib import Path
 from htmlcmp.common import bcolors
 
 
-def tidy_json(path: Path) -> int:
+def tidy_json(path: Path, verbose: bool = False) -> int:
     if not isinstance(path, Path):
         raise TypeError("path must be a Path object")
     if not path.is_file():
@@ -21,10 +21,11 @@ def tidy_json(path: Path) -> int:
             json.load(f)
         return 0
     except ValueError:
+        print(f"{bcolors.FAIL}Error: {path} is not a valid JSON file{bcolors.ENDC}")
         return 1
 
 
-def tidy_html(path: Path, html_tidy_config: Path = None) -> int:
+def tidy_html(path: Path, html_tidy_config: Path = None, verbose: bool = False) -> int:
     if not isinstance(path, Path):
         raise TypeError("path must be a Path object")
     if not path.is_file():
@@ -41,6 +42,15 @@ def tidy_html(path: Path, html_tidy_config: Path = None) -> int:
     result = subprocess.run(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
+    if result.stdout:
+        if verbose and result.returncode == 0:
+            print(result.stdout)
+        elif verbose and result.returncode == 1:
+            print(f"{bcolors.WARNING}Warning: {path} has warnings{bcolors.ENDC}")
+            print(f"{bcolors.WARNING}{result.stdout}{bcolors.ENDC}")
+        elif verbose or result.returncode > 1:
+            print(f"{bcolors.FAIL}Error: {path} has errors{bcolors.ENDC}")
+            print(f"{bcolors.FAIL}{result.stdout}{bcolors.ENDC}")
     if result.returncode == 1:
         return 1
     if result.returncode > 1:
@@ -48,16 +58,16 @@ def tidy_html(path: Path, html_tidy_config: Path = None) -> int:
     return 0
 
 
-def tidy_file(path: Path, html_tidy_config: Path = None) -> int:
+def tidy_file(path: Path, html_tidy_config: Path = None, verbose: bool = False) -> int:
     if not isinstance(path, Path):
         raise TypeError("path must be a Path object")
     if not path.is_file():
         raise FileNotFoundError(f"{path} is not a file")
 
     if path.suffix == ".json":
-        return tidy_json(path)
+        return tidy_json(path, verbose=verbose)
     elif path.suffix == ".html":
-        return tidy_html(path, html_tidy_config=html_tidy_config)
+        return tidy_html(path, html_tidy_config=html_tidy_config, verbose=verbose)
 
 
 def tidyable_file(path: Path) -> bool:
@@ -74,7 +84,11 @@ def tidyable_file(path: Path) -> bool:
 
 
 def tidy_dir(
-    path: Path, level: int = 0, prefix: str = "", html_tidy_config: Path = None
+    path: Path,
+    level: int = 0,
+    prefix: str = "",
+    html_tidy_config: Path = None,
+    verbose: bool = False,
 ) -> dict[str, list[Path]]:
     if not isinstance(path, Path):
         raise TypeError("path must be a Path object")
@@ -104,7 +118,7 @@ def tidy_dir(
 
     for filename in [path.name for path in files]:
         filepath = path / filename
-        tidy = tidy_file(filepath, html_tidy_config=html_tidy_config)
+        tidy = tidy_file(filepath, html_tidy_config=html_tidy_config, verbose=verbose)
         if tidy == 0:
             print(f"{prefix_file}{bcolors.OKGREEN}{filename} ✓{bcolors.ENDC}")
         elif tidy == 1:
@@ -121,6 +135,7 @@ def tidy_dir(
             level=level + 1,
             prefix=prefix + "│   ",
             html_tidy_config=html_tidy_config,
+            verbose=verbose,
         )
         result["warning"].extend(subresult["warning"])
         result["error"].extend(subresult["error"])
@@ -134,9 +149,16 @@ def main():
     parser.add_argument(
         "--html-tidy-config", type=Path, help="Path to tidy config file"
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print verbose output (warnings and errors)",
+    )
     args = parser.parse_args()
 
-    result = tidy_dir(args.path, html_tidy_config=args.html_tidy_config)
+    result = tidy_dir(
+        args.path, html_tidy_config=args.html_tidy_config, verbose=args.verbose
+    )
     if result["error"]:
         return 1
 
