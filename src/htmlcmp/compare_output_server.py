@@ -18,7 +18,6 @@ import watchdog.events
 from htmlcmp.compare_output import comparable_file, compare_files
 from htmlcmp.html_render_diff import get_browser, html_render_diff
 
-
 logger = logging.getLogger(__name__)
 
 
