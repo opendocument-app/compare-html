@@ -1,7 +1,6 @@
 FROM --platform=linux/amd64 ubuntu:24.04
 
 ENV FIREFOX_VERSION="138.0.4"
-ENV PHANTOMJS_VERSION="2.1.1"
 ENV GECKODRIVER_VERSION="0.36.0"
 
 ENV INSTALL="apt-get install -y --no-install-recommends"
@@ -36,21 +35,6 @@ RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.d
     rm google-chrome-stable_current_amd64.deb
 
 RUN google-chrome --version
-
-# phantomjs setup
-RUN $INSTALL build-essential chrpath libssl-dev libxft-dev \
-    libfreetype6 libfreetype6-dev libfontconfig1 libfontconfig1-dev
-
-RUN wget https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-${PHANTOMJS_VERSION}-linux-x86_64.tar.bz2 && \
-    tar -xf phantomjs-${PHANTOMJS_VERSION}-linux-x86_64.tar.bz2 && \
-    mv phantomjs-${PHANTOMJS_VERSION}-linux-x86_64/bin/phantomjs /usr/local/bin && \
-    rm -rf phantomjs-${PHANTOMJS_VERSION}-linux-x86_64 && \
-    rm phantomjs-${PHANTOMJS_VERSION}-linux-x86_64.tar.bz2
-
-# fix weird phantomjs issue
-ENV OPENSSL_CONF=/etc/ssl
-
-RUN phantomjs --version
 
 # install python dependencies
 COPY . /compare-html

@@ -241,9 +241,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("a", type=Path, help="Path to the first directory")
     parser.add_argument("b", type=Path, help="Path to the second directory")
-    parser.add_argument(
-        "--driver", choices=["chrome", "firefox", "phantomjs"], default="firefox"
-    )
+    parser.add_argument("--driver", choices=["chrome", "firefox"], default="firefox")
     parser.add_argument(
         "--diff-output", type=Path, help="Output directory for diff images"
     )

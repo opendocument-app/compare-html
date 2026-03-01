@@ -31,12 +31,6 @@ def test_get_browser():
     assert browser.name == "firefox"
     browser.quit()
 
-    # Test with PhantomJS
-    if shutil.which("phantomjs") is not None:
-        browser = get_browser("phantomjs")
-        assert browser.name == "phantomjs"
-        browser.quit()
-
 
 def test_html_render_diff():
     test1 = Path(__file__).parent / "test1.html"

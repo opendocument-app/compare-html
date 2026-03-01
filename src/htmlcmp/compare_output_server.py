@@ -698,7 +698,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("ref", type=Path, help="Path to the reference directory")
     parser.add_argument("mon", type=Path, help="Path to the monitored directory")
-    parser.add_argument("--driver", choices=["chrome", "firefox", "phantomjs"])
+    parser.add_argument("--driver", choices=["chrome", "firefox"])
     parser.add_argument("--max-workers", type=int, default=1)
     parser.add_argument("--compare", action="store_true")
     parser.add_argument("--port", type=int, default=5000)

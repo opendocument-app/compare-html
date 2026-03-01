@@ -70,11 +70,7 @@ def get_browser(
             f"Expected int for max_width and max_height, got {type(max_width)} and {type(max_height)}"
         )
 
-    if driver == "phantomjs":
-        if shutil.which("phantomjs") is None:
-            raise EnvironmentError("PhantomJS is not installed or not found in PATH")
-        browser = webdriver.PhantomJS()
-    elif driver == "firefox":
+    if driver == "firefox":
         options = webdriver.FirefoxOptions()
         options.add_argument("--headless")
         browser = webdriver.Firefox(options=options)
@@ -109,9 +105,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("a", type=Path, help="Path to the first HTML file")
     parser.add_argument("b", type=Path, help="Path to the second HTML file")
-    parser.add_argument(
-        "--driver", choices=["chrome", "firefox", "phantomjs"], default="firefox"
-    )
+    parser.add_argument("--driver", choices=["chrome", "firefox"], default="firefox")
     parser.add_argument("--max-width", default=1000)
     parser.add_argument("--max-height", default=10000)
     args = parser.parse_args()
