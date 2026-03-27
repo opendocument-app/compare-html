@@ -51,7 +51,7 @@ def screenshot(browser: webdriver.Remote, url: str) -> Image.Image:
 
     time.sleep(loaded_page_settling_time)
 
-    png = browser.get_full_page_screenshot_as_png()
+    png = browser.get_screenshot_as_png()
     return Image.open(io.BytesIO(png))
 
 
