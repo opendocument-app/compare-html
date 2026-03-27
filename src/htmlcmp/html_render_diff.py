@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import shutil
 import sys
 import argparse
 import io
-import time
 from pathlib import Path
 
 from PIL import Image, ImageChops
@@ -74,18 +72,25 @@ def get_browser(
 
 
 def html_render_diff(
-    a: str | Path, b: str | Path, browser: webdriver.Remote
+    a: str | Path,
+    b: str | Path,
+    browser: webdriver.Remote,
+    browser_b: webdriver.Remote = None,
 ) -> tuple[Image.Image, tuple[Image.Image, Image.Image]]:
     if not isinstance(a, (str, Path)) or not isinstance(b, (str, Path)):
         raise TypeError("Both a and b must be str or Path instances")
     if not isinstance(browser, webdriver.Remote):
         raise TypeError(f"Expected webdriver.Remote, got {type(browser)}")
+    if browser_b is None:
+        browser_b = browser
+    elif not isinstance(browser_b, webdriver.Remote):
+        raise TypeError(f"Expected webdriver.Remote, got {type(browser_b)}")
 
     image_a = screenshot(browser, to_url(a))
-    image_b = screenshot(browser, to_url(b))
+    image_b = screenshot(browser_b, to_url(b))
 
-    image_a = image_a.convert("RGB")
-    image_b = image_b.convert("RGB")
+    image_a = image_a.convert("RGBA")
+    image_b = image_b.convert("RGBA")
     diff = ImageChops.difference(image_a, image_b)
     return diff, (image_a, image_b)
 
