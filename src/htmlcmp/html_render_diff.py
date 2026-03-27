@@ -4,6 +4,7 @@
 import sys
 import argparse
 import io
+import time
 from pathlib import Path
 
 from PIL import Image, ImageChops
@@ -34,8 +35,13 @@ def screenshot(browser: webdriver.Remote, url: str) -> Image.Image:
 
     target_find_by = By.TAG_NAME
     target = "body"
+    loaded_page_settling_time = 0
 
-    web_driver_wait = WebDriverWait(browser, 5)
+    # TODO for pdf2htmlex the second screenshot sometimes fades in from white... not sure why, but a sleep solves it
+    if "poppler" in url:
+        loaded_page_settling_time = 0.3
+
+    web_driver_wait = WebDriverWait(browser, 10)
     web_driver_wait.until(
         expected_conditions.presence_of_element_located((target_find_by, target))
     )
@@ -43,7 +49,9 @@ def screenshot(browser: webdriver.Remote, url: str) -> Image.Image:
         lambda driver: driver.execute_script("return document.readyState") == "complete"
     )
 
-    png = browser.get_screenshot_as_png()
+    time.sleep(loaded_page_settling_time)
+
+    png = browser.get_full_page_screenshot_as_png()
     return Image.open(io.BytesIO(png))
 
 
@@ -89,8 +97,8 @@ def html_render_diff(
     image_a = screenshot(browser, to_url(a))
     image_b = screenshot(browser_b, to_url(b))
 
-    image_a = image_a.convert("RGBA")
-    image_b = image_b.convert("RGBA")
+    image_a = image_a.convert("RGB")
+    image_b = image_b.convert("RGB")
     diff = ImageChops.difference(image_a, image_b)
     return diff, (image_a, image_b)
 
