@@ -87,10 +87,6 @@ def html_render_diff(
     image_a = image_a.convert("RGB")
     image_b = image_b.convert("RGB")
     diff = ImageChops.difference(image_a, image_b)
-    # safe files to current directory
-    image_a.save('a.png')
-    image_b.save('b.png')
-    diff.save('diffab.png')
     return diff, (image_a, image_b)
 
 
