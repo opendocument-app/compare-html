@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 ubuntu:24.04
+FROM --platform=linux/amd64 ubuntu:26.04
 
 ENV FIREFOX_VERSION="138.0.4"
 ENV GECKODRIVER_VERSION="0.36.0"
