@@ -428,7 +428,7 @@ header {
 .btn:hover { background: #f1f3f4; }
 table { width: 100%; border-collapse: collapse; }
 thead th {
-  position: sticky; top: 0; z-index: 1;
+  position: sticky; top: var(--header-h, 0px); z-index: 1;
   text-align: left; font-size: 12px; color: var(--muted);
   font-weight: 600; padding: 8px 12px; background: #f8f9fa;
   border-bottom: 1px solid var(--border);
@@ -545,6 +545,13 @@ async function poll() {
     applyFilter();
   } catch (e) {}
 }
+
+function syncHeaderHeight() {
+  const h = document.querySelector("header").offsetHeight;
+  document.documentElement.style.setProperty("--header-h", h + "px");
+}
+syncHeaderHeight();
+window.addEventListener("resize", syncHeaderHeight);
 
 updateSummary();
 if (LIVE) setInterval(poll, 1500);
