@@ -272,6 +272,30 @@ def root():
 
     has_comparator = Config.comparator is not None
 
+    def collect_one_sided(existing: Path, root: Path, message: str) -> list[dict]:
+        """Walk a directory present on only one side.
+
+        Emits one row per comparable file inside it so each file stays viewable
+        (on the present side) and copyable to the reference, just like a missing
+        file. Recurses into nested directories.
+        """
+        entries = []
+
+        for child in sorted(existing.iterdir(), key=lambda p: p.name):
+            if child.is_dir():
+                entries.extend(collect_one_sided(child, root, message))
+            elif child.is_file() and comparable_file(child):
+                entries.append(
+                    {
+                        "path": str(child.relative_to(root)),
+                        "comparable": True,
+                        "message": message,
+                        "result": "different",
+                    }
+                )
+
+        return entries
+
     def collect(a: Path, b: Path) -> list[dict]:
         """Single O(n) walk producing flat leaf rows.
 
@@ -311,7 +335,7 @@ def root():
                 entries.append(
                     {
                         "path": str(rel),
-                        "comparable": False,
+                        "comparable": True,
                         "message": "missing in reference (A)",
                         "result": "different",
                     }
@@ -320,23 +344,25 @@ def root():
                 entries.append(
                     {
                         "path": str(rel),
-                        "comparable": False,
+                        "comparable": True,
                         "message": "missing in monitored (B)",
                         "result": "different",
                     }
                 )
 
         for name in sorted(left_dirs ^ right_dirs):
-            rel = common_path / name
-            where = "reference (A)" if name in right_dirs else "monitored (B)"
-            entries.append(
-                {
-                    "path": str(rel) + "/",
-                    "comparable": False,
-                    "message": f"directory missing in {where}",
-                    "result": "different",
-                }
-            )
+            if name in left_dirs:
+                entries.extend(
+                    collect_one_sided(
+                        a / name, Config.path_a, "missing in monitored (B)"
+                    )
+                )
+            else:
+                entries.extend(
+                    collect_one_sided(
+                        b / name, Config.path_b, "missing in reference (A)"
+                    )
+                )
 
         for name in sorted(left_dirs & right_dirs):
             entries.extend(collect(a / name, b / name))
@@ -638,6 +664,9 @@ def image_diff(path: str):
     if Config.driver is None:
         return "Image diff not available without browser driver", 404
 
+    if not (Config.path_a / path).is_file() or not (Config.path_b / path).is_file():
+        return "Image diff not available: file missing on one side", 404
+
     diff, _ = html_render_diff(
         Config.path_a / path,
         Config.path_b / path,
@@ -659,6 +688,16 @@ def file(variant: str, path: str):
         raise ValueError("Variant must be 'a' or 'b'")
 
     variant_root = Config.path_a if variant == "a" else Config.path_b
+
+    if not (variant_root / path).is_file():
+        side = "reference (A)" if variant == "a" else "monitored (B)"
+        return (
+            "<!DOCTYPE html><html><body style='margin:0;display:flex;"
+            "align-items:center;justify-content:center;height:100vh;"
+            "font-family:sans-serif;color:#5f6368;background:#fafafa;'>"
+            f"<div>file missing in {side}</div></body></html>"
+        )
+
     return send_from_directory(variant_root, path)
 
 
