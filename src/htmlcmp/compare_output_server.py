@@ -311,7 +311,7 @@ def root():
                 entries.append(
                     {
                         "path": str(rel),
-                        "comparable": False,
+                        "comparable": True,
                         "message": "missing in reference (A)",
                         "result": "different",
                     }
@@ -320,7 +320,7 @@ def root():
                 entries.append(
                     {
                         "path": str(rel),
-                        "comparable": False,
+                        "comparable": True,
                         "message": "missing in monitored (B)",
                         "result": "different",
                     }
@@ -638,6 +638,9 @@ def image_diff(path: str):
     if Config.driver is None:
         return "Image diff not available without browser driver", 404
 
+    if not (Config.path_a / path).is_file() or not (Config.path_b / path).is_file():
+        return "Image diff not available: file missing on one side", 404
+
     diff, _ = html_render_diff(
         Config.path_a / path,
         Config.path_b / path,
@@ -659,6 +662,16 @@ def file(variant: str, path: str):
         raise ValueError("Variant must be 'a' or 'b'")
 
     variant_root = Config.path_a if variant == "a" else Config.path_b
+
+    if not (variant_root / path).is_file():
+        side = "reference (A)" if variant == "a" else "monitored (B)"
+        return (
+            "<!DOCTYPE html><html><body style='margin:0;display:flex;"
+            "align-items:center;justify-content:center;height:100vh;"
+            "font-family:sans-serif;color:#5f6368;background:#fafafa;'>"
+            f"<div>file missing in {side}</div></body></html>"
+        )
+
     return send_from_directory(variant_root, path)
 
 
