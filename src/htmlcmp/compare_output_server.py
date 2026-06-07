@@ -287,14 +287,10 @@ def root():
         right = sorted(p.name for p in b.iterdir())
 
         left_files = {
-            name
-            for name in left
-            if (a / name).is_file() and comparable_file(a / name)
+            name for name in left if (a / name).is_file() and comparable_file(a / name)
         }
         right_files = {
-            name
-            for name in right
-            if (b / name).is_file() and comparable_file(b / name)
+            name for name in right if (b / name).is_file() and comparable_file(b / name)
         }
         left_dirs = {name for name in left if (a / name).is_dir()}
         right_dirs = {name for name in right if (b / name).is_dir()}
