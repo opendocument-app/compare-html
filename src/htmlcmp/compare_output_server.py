@@ -272,6 +272,30 @@ def root():
 
     has_comparator = Config.comparator is not None
 
+    def collect_one_sided(existing: Path, root: Path, message: str) -> list[dict]:
+        """Walk a directory present on only one side.
+
+        Emits one row per comparable file inside it so each file stays viewable
+        (on the present side) and copyable to the reference, just like a missing
+        file. Recurses into nested directories.
+        """
+        entries = []
+
+        for child in sorted(existing.iterdir(), key=lambda p: p.name):
+            if child.is_dir():
+                entries.extend(collect_one_sided(child, root, message))
+            elif child.is_file() and comparable_file(child):
+                entries.append(
+                    {
+                        "path": str(child.relative_to(root)),
+                        "comparable": True,
+                        "message": message,
+                        "result": "different",
+                    }
+                )
+
+        return entries
+
     def collect(a: Path, b: Path) -> list[dict]:
         """Single O(n) walk producing flat leaf rows.
 
@@ -327,16 +351,18 @@ def root():
                 )
 
         for name in sorted(left_dirs ^ right_dirs):
-            rel = common_path / name
-            where = "reference (A)" if name in right_dirs else "monitored (B)"
-            entries.append(
-                {
-                    "path": str(rel) + "/",
-                    "comparable": False,
-                    "message": f"directory missing in {where}",
-                    "result": "different",
-                }
-            )
+            if name in left_dirs:
+                entries.extend(
+                    collect_one_sided(
+                        a / name, Config.path_a, "missing in monitored (B)"
+                    )
+                )
+            else:
+                entries.extend(
+                    collect_one_sided(
+                        b / name, Config.path_b, "missing in reference (A)"
+                    )
+                )
 
         for name in sorted(left_dirs & right_dirs):
             entries.extend(collect(a / name, b / name))
