@@ -32,19 +32,6 @@ class Config:
     log_file: Path = None
 
 
-def result_symbol(result: str) -> str | None:
-    if not isinstance(result, str):
-        raise TypeError("Result must be of type str")
-
-    if result == "pending":
-        return "🔄"
-    if result == "same":
-        return "✔"
-    if result == "different":
-        return "❌"
-    return None
-
-
 class Observer:
     def __init__(self):
         class Handler(watchdog.events.FileSystemEventHandler):
@@ -375,7 +362,7 @@ def collect_entries() -> list[dict]:
 def script_js():
     logger.debug("Serving script.js")
 
-    return """
+    return r"""
 function updateRef(path) {
   fetch(`/update_ref/${path}`)
     .then(response => {
@@ -403,7 +390,7 @@ def root():
     def badge(result: str | None) -> str:
         if result is None:
             return ""
-        return f'<span class="badge {result}">{result_symbol(result) or ""} {result}</span>'
+        return f'<span class="badge {result}">{result}</span>'
 
     rows = []
     for e in entries:
@@ -425,7 +412,7 @@ def root():
     if Config.log_file is not None:
         log_link = f'<a href="/logfile" target="_blank">log file</a>'
 
-    head = """<!DOCTYPE html>
+    head = r"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -508,7 +495,7 @@ td.status { white-space: nowrap; }
 <body>
 """
 
-    header = f"""<header>
+    header = rf"""<header>
   <div class="title">compare-html</div>
   <div class="paths">
     <div>reference (A): <code>{Config.path_a}</code></div>
@@ -541,17 +528,16 @@ td.status { white-space: nowrap; }
     )
 
     script = (
-        """
+        r"""
 <script>
 const LIVE = """
         + ("true" if has_comparator else "false")
-        + """;
-const SYM = {pending: "🔄", same: "✔", different: "❌"};
+        + r""";
 let activeFilter = "all";
 
 function badgeHtml(status) {
   if (!status) return "";
-  return `<span class="badge ${status}">${SYM[status] || ""} ${status}</span>`;
+  return `<span class="badge ${status}">${status}</span>`;
 }
 
 function setFilter(btn) {
@@ -682,7 +668,7 @@ def compare(path: str):
     if not isinstance(path, str):
         raise TypeError("Path must be a string")
 
-    return f"""<!DOCTYPE html>
+    return rf"""<!DOCTYPE html>
 <html>
 <head>
 <style>
@@ -778,6 +764,8 @@ def update_ref(path: str):
 
     if not src.exists():
         return f"Source file does not exist: {src}", 404
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
 
     if src.is_file():
         shutil.copy2(src, dst)
