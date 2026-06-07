@@ -500,6 +500,7 @@ td.status { white-space: nowrap; }
       <button data-filter="pending" onclick="setFilter(this)">Pending</button>
       <button data-filter="same" onclick="setFilter(this)">Same</button>
     </div>
+    <button class="btn" id="update-all" onclick="updateAll()">Update all in view</button>
     {log_link}
   </div>
 </header>
@@ -553,6 +554,39 @@ function updateSummary() {
   document.getElementById("chip-same").textContent = counts.same + " same";
   document.getElementById("chip-different").textContent = counts.different + " diff";
   document.getElementById("chip-pending").textContent = counts.pending + " pending";
+}
+
+async function updateAll() {
+  const rows = [...document.querySelectorAll("tbody tr")].filter(tr => !tr.hidden);
+  if (rows.length === 0) {
+    alert("No files in the current view.");
+    return;
+  }
+  if (!confirm(`Update reference for ${rows.length} file(s) in the current view?`)) return;
+
+  const btn = document.getElementById("update-all");
+  const label = btn.textContent;
+  btn.disabled = true;
+
+  const failed = [];
+  let done = 0;
+  for (const tr of rows) {
+    const path = tr.dataset.path;
+    btn.textContent = `Updating ${++done}/${rows.length}…`;
+    try {
+      const res = await fetch(`/update_ref/${path}`);
+      if (!res.ok) failed.push(path);
+    } catch (e) {
+      failed.push(path);
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = label;
+  if (failed.length) {
+    alert(`Updated ${rows.length - failed.length}/${rows.length}. Failed:\n` + failed.join("\n"));
+  }
+  location.reload();
 }
 
 async function poll() {
