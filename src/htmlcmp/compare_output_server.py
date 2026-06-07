@@ -53,18 +53,31 @@ class Observer:
 
             def dispatch(self, event):
                 event_type = event.event_type
-                src_path = Path(event.src_path)
 
-                logger.debug(f"Watchdog event: {event_type} {src_path}")
+                logger.debug(f"Watchdog event: {event_type} {event.src_path}")
 
                 if event_type not in ["moved", "deleted", "created", "modified"]:
                     return
 
-                if src_path.is_file():
-                    logger.debug(
-                        f"Submit watchdog file change: {event_type} {src_path}"
-                    )
-                    Config.comparator.submit(src_path.relative_to(self._path))
+                # A move surfaces both the old (src) and new (dest) locations;
+                # everything else only touches src.
+                paths = [Path(event.src_path)]
+                if event_type == "moved" and getattr(event, "dest_path", None):
+                    paths.append(Path(event.dest_path))
+
+                for path in paths:
+                    try:
+                        rel = path.relative_to(self._path)
+                    except ValueError:
+                        continue
+
+                    if path.is_file():
+                        logger.debug(f"Submit watchdog file change: {path}")
+                        Config.comparator.submit(rel)
+                    else:
+                        # Deleted/moved-away file: drop its stale cached result.
+                        logger.debug(f"Forget watchdog file removal: {path}")
+                        Config.comparator.forget(rel)
 
         logger.info("Create watchdog for paths:")
         logger.info(f"  A: {Config.path_a}")
@@ -235,41 +248,31 @@ class Comparator:
         logger.debug(f"No comparison result for path: {path}")
         return None
 
-    def all_results(self) -> dict[str, str]:
-        # Snapshot the per-file results as a plain {path: result} map.
-        # Cheap O(n) dict copy used by the live-status endpoint; no tree walk.
-        return {str(path): result for path, result in list(self._result.items())}
+    def forget(self, path: Path) -> None:
+        # Drop any cached result/future for a path that no longer exists, so
+        # deletions don't linger as stale state.
+        logger.debug(f"Forgetting comparison for path: {path}")
+
+        if not isinstance(path, Path):
+            raise TypeError("Path must be of type Path")
+
+        future = self._future.pop(path, None)
+        if future is not None:
+            future.cancel()
+        self._result.pop(path, None)
 
 
 app = Flask("compare")
 
 
-@app.route("/script.js")
-def script_js():
-    logger.debug("Serving script.js")
+def collect_entries() -> list[dict]:
+    """Walk both trees once and produce flat per-leaf rows.
 
-    return """
-function updateRef(path) {
-  fetch(`/update_ref/${path}`)
-    .then(response => {
-      if (response.ok) {
-        alert(`Reference updated for ${path}`);
-        location.reload();
-      } else {
-        alert(`Failed to update reference for ${path}: ${response.statusText}`);
-      }
-    })
-    .catch(error => {
-      alert(`Error updating reference for ${path}: ${error}`);
-    });
-}
-"""
-
-
-@app.route("/")
-def root():
-    logger.debug("Generating root directory listing")
-
+    Shared by the page render and the live-status endpoint so a poll reflects
+    exactly the same state as a fresh reload, including files that were created
+    or deleted after startup. File statuses are O(1) dict lookups, so the whole
+    tree is walked exactly once with no recursive per-directory aggregation.
+    """
     has_comparator = Config.comparator is not None
 
     def collect_one_sided(existing: Path, root: Path, message: str) -> list[dict]:
@@ -297,12 +300,6 @@ def root():
         return entries
 
     def collect(a: Path, b: Path) -> list[dict]:
-        """Single O(n) walk producing flat leaf rows.
-
-        One row per comparable file (and per missing file/dir). File statuses
-        are O(1) dict lookups, so there is no recursive per-directory status
-        aggregation and the whole tree is walked exactly once.
-        """
         entries = []
 
         common_path = a.relative_to(Config.path_a)
@@ -371,6 +368,37 @@ def root():
 
     entries = collect(Config.path_a, Config.path_b)
     entries.sort(key=lambda e: e["path"])
+    return entries
+
+
+@app.route("/script.js")
+def script_js():
+    logger.debug("Serving script.js")
+
+    return """
+function updateRef(path) {
+  fetch(`/update_ref/${path}`)
+    .then(response => {
+      if (response.ok) {
+        alert(`Reference updated for ${path}`);
+        location.reload();
+      } else {
+        alert(`Failed to update reference for ${path}: ${response.statusText}`);
+      }
+    })
+    .catch(error => {
+      alert(`Error updating reference for ${path}: ${error}`);
+    });
+}
+"""
+
+
+@app.route("/")
+def root():
+    logger.debug("Generating root directory listing")
+
+    has_comparator = Config.comparator is not None
+    entries = collect_entries()
 
     def badge(result: str | None) -> str:
         if result is None:
@@ -631,7 +659,10 @@ def status():
     if Config.comparator is None:
         return {}
 
-    return Config.comparator.all_results()
+    # Walk the filesystem the same way the page does so a poll reflects the
+    # current state (including files created/deleted after startup), rather
+    # than a cache the watchdog may not have kept current.
+    return {e["path"]: e["result"] for e in collect_entries()}
 
 
 @app.route("/logfile")
