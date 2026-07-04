@@ -17,10 +17,11 @@ dependencies = [
     "selenium",
     "flask",
     "watchdog",
+    "rich",
 ]
 
 [project.scripts]
-"compare-html" = "htmlcmp.compare_output:main"
+"compare-html" = "htmlcmp.compare_output_cli:main"
 "compare-html-server" = "htmlcmp.compare_output_server:main"
 "html-render-diff" = "htmlcmp.html_render_diff:main"
 "html-tidy" = "htmlcmp.tidy_output:main"
