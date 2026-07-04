@@ -47,9 +47,9 @@ def compare_html(a: Path, b: Path, browser=None, diff_output: Path = None) -> bo
         raise FileNotFoundError("Both arguments must be files")
 
     if browser is None:
-        browser = get_browser()
+        browser = get_browser("firefox")
     diff, (image_a, image_b) = html_render_diff(a, b, browser=browser)
-    result = True if diff.getbbox() is None else False
+    result = diff.getbbox() is None
     if diff_output is not None and not result:
         diff_output.mkdir(parents=True, exist_ok=True)
         image_a.save(diff_output / "a.png")
@@ -64,12 +64,19 @@ def compare_files(a: Path, b: Path, **kwargs) -> bool:
     if not a.is_file() or not b.is_file():
         raise FileNotFoundError("Both arguments must be files")
 
-    if filecmp.cmp(a, b):
+    if filecmp.cmp(a, b, shallow=False):
         return True
     if a.suffix == ".json":
         return compare_json(a, b)
     if a.suffix == ".html":
+        if kwargs.get("browser") is None:
+            # No browser available (e.g. --driver none): the files already
+            # differ at the byte level and we cannot render to check for visual
+            # equality, so report them as different rather than spinning up a
+            # browser here.
+            return False
         return compare_html(a, b, **kwargs)
+    return False
 
 
 def comparable_file(path: Path) -> bool:

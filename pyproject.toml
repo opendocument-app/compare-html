@@ -9,7 +9,7 @@ authors = [
 maintainers = [
     {name = "Andreas Stefl", email="stefl.andreas@gmail.com"},
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 readme = "README.md"
 license = {file = "LICENSE.txt"}
 dependencies = [

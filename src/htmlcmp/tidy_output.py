@@ -112,12 +112,12 @@ def tidy_dir(
         "error": [],
     }
 
-    items = [p for p in path.iterdir()]
-    files = sorted([path for path in items if path.is_file() and tidyable_file(path)])
-    dirs = sorted([path for path in items if path.is_dir()])
+    items = list(path.iterdir())
+    files = sorted(p for p in items if p.is_file() and tidyable_file(p))
+    dirs = sorted(p for p in items if p.is_dir())
 
-    for filename in [path.name for path in files]:
-        filepath = path / filename
+    for filepath in files:
+        filename = filepath.name
         tidy = tidy_file(filepath, html_tidy_config=html_tidy_config, verbose=verbose)
         if tidy == 0:
             print(f"{prefix_file}{bcolors.OKGREEN}{filename} ✓{bcolors.ENDC}")
@@ -128,10 +128,10 @@ def tidy_dir(
             print(f"{prefix_file}{bcolors.FAIL}{filename} ✘{bcolors.ENDC}")
             result["error"].append(filepath)
 
-    for dirname in [path.name for path in dirs]:
-        print(prefix + "├── " + dirname)
+    for dirpath in dirs:
+        print(prefix + "├── " + dirpath.name)
         subresult = tidy_dir(
-            path / dirname,
+            dirpath,
             level=level + 1,
             prefix=prefix + "│   ",
             html_tidy_config=html_tidy_config,
