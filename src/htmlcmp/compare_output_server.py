@@ -32,6 +32,10 @@ class Config:
     observer = None
     comparator = None
     browser = None
+    # Serializes access to the single shared ``browser`` above: Flask serves
+    # requests from a thread pool and Selenium drivers are not thread-safe, so
+    # concurrent /image_diff requests would otherwise interleave on one driver.
+    browser_lock = threading.Lock()
     thread_local = threading.local()
     log_file: Path = None
 
@@ -722,11 +726,12 @@ def image_diff(path: str):
     if not (Config.path_a / path).is_file() or not (Config.path_b / path).is_file():
         return "Image diff not available: file missing on one side", 404
 
-    diff, _ = html_render_diff(
-        Config.path_a / path,
-        Config.path_b / path,
-        Config.browser,
-    )
+    with Config.browser_lock:
+        diff, _ = html_render_diff(
+            Config.path_a / path,
+            Config.path_b / path,
+            Config.browser,
+        )
     tmp = io.BytesIO()
     diff.save(tmp, "JPEG", quality=70)
     tmp.seek(0)
@@ -786,6 +791,11 @@ def main():
     parser.add_argument("--driver", choices=["chrome", "firefox"])
     parser.add_argument("--max-workers", type=int, default=1)
     parser.add_argument("--compare", action="store_true")
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host/interface to bind the server to (default: 0.0.0.0)",
+    )
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument(
         "-v",
@@ -820,7 +830,7 @@ def main():
         Config.observer = Observer()
         Config.observer.start()
 
-    app.run(host="0.0.0.0", port=args.port)
+    app.run(host=args.host, port=args.port)
 
     if args.compare:
         Config.observer.stop()

@@ -108,8 +108,8 @@ def main():
     parser.add_argument("a", type=Path, help="Path to the first HTML file")
     parser.add_argument("b", type=Path, help="Path to the second HTML file")
     parser.add_argument("--driver", choices=["chrome", "firefox"], default="firefox")
-    parser.add_argument("--max-width", default=1000)
-    parser.add_argument("--max-height", default=10000)
+    parser.add_argument("--max-width", type=int, default=1000)
+    parser.add_argument("--max-height", type=int, default=10000)
     args = parser.parse_args()
 
     browser = get_browser(args.driver, args.max_width, args.max_height)
