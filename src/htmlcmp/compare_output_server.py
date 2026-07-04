@@ -15,7 +15,11 @@ from flask import Flask, send_from_directory, send_file
 import watchdog.observers
 import watchdog.events
 
-from htmlcmp.compare_output import comparable_file, compare_files
+from htmlcmp.common import (
+    comparable_file,
+    compare_files,
+    setup_logging,
+)
 from htmlcmp.html_render_diff import get_browser, html_render_diff
 
 logger = logging.getLogger(__name__)
@@ -773,49 +777,6 @@ def update_ref(path: str):
         shutil.copytree(src, dst, dirs_exist_ok=True)
 
     return "Reference updated", 200
-
-
-def verbosity_to_level(verbosity: int) -> int:
-    if verbosity >= 3:
-        return logging.DEBUG
-    elif verbosity == 2:
-        return logging.INFO
-    elif verbosity == 1:
-        return logging.WARNING
-    else:
-        return logging.ERROR
-
-
-def setup_logging(
-    verbosity: int, log_file: Path = None, log_file_verbosity: int = None
-) -> None:
-    level = verbosity_to_level(verbosity)
-
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-    root_logger.handlers.clear()
-
-    formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-    console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setLevel(level)
-    console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)
-
-    if log_file is not None:
-        file_level = (
-            verbosity_to_level(log_file_verbosity)
-            if log_file_verbosity is not None
-            else level
-        )
-
-        file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
-        file_handler.setLevel(file_level)
-        file_handler.setFormatter(formatter)
-        root_logger.addHandler(file_handler)
 
 
 def main():
