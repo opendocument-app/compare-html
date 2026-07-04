@@ -252,11 +252,16 @@ def run(
     live: bool,
     github: bool,
 ) -> int:
-    console.print(f"[bold]Comparing[/bold] {escape(str(a))} [dim]→[/dim] {escape(str(b))}")
+    console.print(
+        f"[bold]Comparing[/bold] {escape(str(a))} [dim]→[/dim] {escape(str(b))}"
+    )
 
     tasks, failures = collect_tasks(a, b, diff_output=diff_output)
-    logger.info("Collected %d comparable file(s), %d structural difference(s)",
-                len(tasks), len(failures))
+    logger.info(
+        "Collected %d comparable file(s), %d structural difference(s)",
+        len(tasks),
+        len(failures),
+    )
 
     # Report structural failures (missing files/dirs) up-front.
     for f in sorted(failures, key=lambda f: str(f.rel)):
