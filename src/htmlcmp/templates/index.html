@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>compare-html</title>
+<link rel="stylesheet" href="{{ static_url('style.css') }}">
+<script defer src="{{ static_url('common.js') }}"></script>
+<script defer src="{{ static_url('index.js') }}"></script>
+</head>
+<body class="index" data-live="{{ 'true' if live else 'false' }}">
+
+<header>
+  <div class="headline">
+    <div>
+      <div class="title">compare-html</div>
+      <div class="paths">
+        <div><span class="tag a">A</span> reference <code>{{ path_a }}</code></div>
+        <div><span class="tag b">B</span> monitored <code>{{ path_b }}</code></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="filter by path…" autocomplete="off">
+    <div class="segmented" id="filters">
+      <button data-filter="all" class="active">All <span class="count" data-count="total">0</span></button>
+      <button data-filter="different">Differences <span class="count different" data-count="different">0</span></button>
+      <button data-filter="pending">Pending <span class="count pending" data-count="pending">0</span></button>
+      <button data-filter="same">Same <span class="count same" data-count="same">0</span></button>
+      <button data-filter="accepted">Accepted <span class="count accepted" data-count="accepted">0</span></button>
+    </div>
+    <button class="btn" id="update-all">Update all in view</button>
+    {% if log_file %}<a class="btn ghost" href="{{ url_for('logfile') }}" target="_blank" rel="noopener">log file</a>{% endif %}
+  </div>
+</header>
+
+<main>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:1%">Status</th>
+        <th>Path</th>
+        <th style="width:20%">Message</th>
+        <th style="width:1%"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr data-path="{{ e.path }}"
+          data-status="{{ e.result or '' }}"
+          data-accepted="{{ 'true' if e.accepted else 'false' }}">
+        <td class="status">
+          {% if e.result %}<span class="badge {{ e.result }}">{{ e.result }}</span>{% endif %}
+          <span class="badge accepted" {% if not e.accepted %}hidden{% endif %}>✓ accepted</span>
+        </td>
+        <td class="path"><a href="{{ url_for('compare', path=e.path) }}">{{ e.path }}</a></td>
+        <td class="message">{{ e.message }}</td>
+        <td class="actions"><button class="btn" data-action="update-ref">update ref</button></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if not entries %}<div class="empty">No comparable files found.</div>{% endif %}
+</main>
+
+<div class="toast" id="toast"></div>
+</body>
+</html>
