@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ path }} — compare-html</title>
+<link rel="stylesheet" href="{{ static_url('style.css') }}">
+<script defer src="{{ static_url('common.js') }}"></script>
+<script defer src="{{ static_url('compare.js') }}"></script>
+</head>
+<body class="compare"
+      data-path="{{ path }}"
+      data-live="{{ 'true' if live else 'false' }}"
+      data-view="split"
+      data-diff-open="true">
+
+<header>
+  <div class="group">
+    <a class="btn ghost icon" href="{{ url_for('root') }}" title="back to index (Esc)">←</a>
+    <span class="crumb" title="{{ path }}">{{ path }}</span>
+    <span class="badge" id="status-badge" hidden></span>
+    <span class="badge accepted" id="accepted-badge" hidden>✓ accepted</span>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="group">
+    <button class="btn icon" id="prev" title="previous file (←)" disabled>←</button>
+    <span class="position" id="position">…</span>
+    <button class="btn icon" id="next" title="next file (→)" disabled>→</button>
+    <label class="switch" title="restrict navigation to files that differ">
+      <input type="checkbox" id="diffs-only"> diffs only
+    </label>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="group">
+    <div class="segmented" id="views">
+      <button data-view="a" title="reference only (1)">A</button>
+      <button data-view="split" class="active" title="side by side (2)">A|B</button>
+      <button data-view="b" title="monitored only (3)">B</button>
+    </div>
+    <button class="btn" id="toggle-diff" title="toggle diff panel (d)">diff</button>
+    <button class="btn primary" id="update-ref" title="copy B over A (u)">Update reference</button>
+    <button class="btn ghost icon" id="help-btn" title="shortcuts (?)">?</button>
+  </div>
+</header>
+
+<main class="panes">
+  <section class="pane" id="pane-a">
+    <div class="pane-head">
+      <span class="tag a">A</span>
+      <span class="file" title="{{ file_a }}">{{ file_a }}</span>
+      <span class="spacer"></span>
+      <a href="{{ url_for('file', variant='a', path=path) }}" target="_blank" rel="noopener">open</a>
+    </div>
+    <iframe id="frame-a" src="{{ url_for('file', variant='a', path=path) }}" title="reference (A)"></iframe>
+  </section>
+
+  <aside id="diff-col">
+    <div class="pane-head">
+      <span>diff</span>
+      <span class="spacer"></span>
+      <button class="btn ghost icon" id="expand-diff" title="expand / collapse diff image">⇔</button>
+    </div>
+    <div class="minimap" id="minimap" title="click to jump to that position in both documents"
+         {% if not diff_available %}hidden{% endif %}>
+      <img id="diff-img" src="{{ url_for('image_diff', path=path) }}" alt="rendered diff">
+      <div class="regions" id="regions"></div>
+      <div class="viewport" id="viewport" hidden></div>
+    </div>
+    <div class="diff-stats" id="diff-stats" {% if not diff_available %}hidden{% endif %}></div>
+    <div class="diff-note" id="diff-note" {% if diff_available %}hidden{% endif %}>no rendered diff</div>
+  </aside>
+
+  <section class="pane" id="pane-b">
+    <div class="pane-head">
+      <span class="tag b">B</span>
+      <span class="file" title="{{ file_b }}">{{ file_b }}</span>
+      <span class="spacer"></span>
+      <a href="{{ url_for('file', variant='b', path=path) }}" target="_blank" rel="noopener">open</a>
+    </div>
+    <iframe id="frame-b" src="{{ url_for('file', variant='b', path=path) }}" title="monitored (B)"></iframe>
+  </section>
+</main>
+
+<dialog id="help">
+  <h2>Keyboard shortcuts</h2>
+  <dl>
+    <dt>← / k</dt><dd>previous file</dd>
+    <dt>→ / j</dt><dd>next file</dd>
+    <dt>1 / 2 / 3</dt><dd>A only / side by side / B only</dd>
+    <dt>d</dt><dd>toggle diff panel</dd>
+    <dt>u</dt><dd>update reference (copy B over A)</dd>
+    <dt>r</dt><dd>reload both panes</dd>
+    <dt>Esc</dt><dd>back to index</dd>
+    <dt>?</dt><dd>this help</dd>
+  </dl>
+</dialog>
+
+<div class="toast" id="toast"></div>
+</body>
+</html>

@@ -55,6 +55,19 @@ def screenshot(browser: webdriver.Remote, url: str) -> Image.Image:
     return Image.open(io.BytesIO(png))
 
 
+def content_bottom(image: Image.Image) -> int:
+    """Row just below the last pixel that differs from the page background.
+
+    The background is sampled from the bottom right corner, so a page that
+    paints its whole window (a full-height gradient, say) simply yields the
+    full height and nothing is cropped.
+    """
+    background = image.getpixel((image.width - 1, image.height - 1))
+    canvas = Image.new(image.mode, image.size, background)
+    bbox = ImageChops.difference(image, canvas).getbbox()
+    return 0 if bbox is None else bbox[3]
+
+
 def get_browser(
     driver: str, max_width: int = 1000, max_height: int = 10000
 ) -> webdriver.Remote:
@@ -94,11 +107,18 @@ def html_render_diff(
     elif not isinstance(browser_b, webdriver.Remote):
         raise TypeError(f"Expected webdriver.Remote, got {type(browser_b)}")
 
-    image_a = screenshot(browser, to_url(a))
-    image_b = screenshot(browser_b, to_url(b))
+    image_a = screenshot(browser, to_url(a)).convert("RGB")
+    image_b = screenshot(browser_b, to_url(b)).convert("RGB")
 
-    image_a = image_a.convert("RGB")
-    image_b = image_b.convert("RGB")
+    # The browser window is deliberately very tall so that long pages fit into
+    # one screenshot, which leaves most shots mostly empty. That empty tail is
+    # identical on both sides by construction and would otherwise dominate
+    # every position and area derived from the diff, so it is cropped away.
+    height = max(content_bottom(image_a), content_bottom(image_b), 1)
+    if height < min(image_a.height, image_b.height):
+        image_a = image_a.crop((0, 0, image_a.width, height))
+        image_b = image_b.crop((0, 0, image_b.width, height))
+
     diff = ImageChops.difference(image_a, image_b)
     return diff, (image_a, image_b)
 

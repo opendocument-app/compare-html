@@ -3,17 +3,21 @@
 
 import io
 import sys
+import time
 import shutil
 import argparse
 import logging
 import threading
 import functools
+import collections
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
-from flask import Flask, send_from_directory, send_file
+from flask import Flask, Response, render_template, send_from_directory, url_for
 import watchdog.observers
 import watchdog.events
+
+from PIL import Image
 
 from htmlcmp.common import (
     comparable_file,
@@ -166,17 +170,24 @@ class Comparator:
 
         if not isinstance(path, Path):
             raise TypeError("Path must be of type Path")
-        if path not in self._future:
-            raise RuntimeError("Path not submitted for comparison")
 
         browser = getattr(Config.thread_local, "browser", None)
-        result = compare_files(
-            Config.path_a / path,
-            Config.path_b / path,
-            browser=browser,
-        )
+        try:
+            result = compare_files(
+                Config.path_a / path,
+                Config.path_b / path,
+                browser=browser,
+            )
+        except Exception:
+            # A file may have vanished or failed to render between submission
+            # and comparison; report it as different rather than leaving the
+            # path stuck on "pending" forever.
+            logger.exception(f"Comparison failed for path: {path}")
+            result = False
         self._result[path] = "same" if result else "different"
-        self._future.pop(path)
+        # The worker can start before ``submit`` stored the future, so the
+        # entry is not guaranteed to be there yet.
+        self._future.pop(path, None)
 
     def result(self, path: Path) -> str | None:
         logger.debug(f"Getting comparison result for path: {path}")
@@ -257,7 +268,179 @@ class Comparator:
         self._result.pop(path, None)
 
 
-app = Flask("compare")
+class Accepted:
+    """Remembers which files had their reference updated during this session.
+
+    That is what "accepted" means on the pages: someone looked at the diff and
+    promoted the monitored file to be the new reference. The mark is dropped
+    again as soon as the monitored file changes after the update, so it never
+    claims more than it knows. State is in-memory only.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._marks: dict[str, float] = {}
+
+    def mark(self, path: str) -> None:
+        logger.debug(f"Marking as accepted: {path}")
+
+        with self._lock:
+            self._marks[path] = time.time()
+
+    def check(self, path: str) -> bool:
+        with self._lock:
+            timestamp = self._marks.get(path)
+
+        if timestamp is None:
+            return False
+
+        try:
+            stale = (Config.path_b / path).stat().st_mtime > timestamp
+        except OSError:
+            stale = True
+
+        if stale:
+            logger.debug(f"Dropping stale acceptance: {path}")
+            with self._lock:
+                self._marks.pop(path, None)
+            return False
+
+        return True
+
+
+def highlight(diff: Image.Image) -> Image.Image:
+    """Turn a raw difference image into something readable at a glance.
+
+    Pixel-wise differences are mostly very dark, which is unusable as an image,
+    so every differing pixel is painted in full-strength red on a near-black
+    background.
+    """
+    mask = diff.convert("L").point(lambda value: 255 if value > 0 else 0)
+    visual = Image.new("RGB", diff.size, (12, 14, 18))
+    visual.paste((255, 76, 76), mask=mask)
+    return visual
+
+
+def diff_regions(diff: Image.Image, bands: int = 256) -> list[list[float]]:
+    """Locate the vertical bands of the page that contain differences.
+
+    Returned as [start, end] fractions of the page height. The compare page
+    draws these as overlay bars: a few differing pixels vanish when the diff
+    image itself is scaled into a narrow strip, whereas a band always stays
+    visible. Costs one scan over the image.
+    """
+    width, height = diff.size
+    band = max(1, height // bands)
+
+    regions = []
+    for top in range(0, height, band):
+        bottom = min(height, top + band)
+        if diff.crop((0, top, width, bottom)).getbbox() is None:
+            continue
+        if regions and regions[-1][1] == top:
+            regions[-1][1] = bottom
+        else:
+            regions.append([top, bottom])
+
+    return [[top / height, bottom / height] for top, bottom in regions]
+
+
+class DiffCache:
+    """Caches rendered diff images, keyed by the mtimes of both inputs.
+
+    Rendering drives a real browser and is by far the most expensive thing the
+    server does. The compare page wants both the image and its statistics, and
+    asks again on every reload, so without a cache a single review step would
+    pay for several full-page renders.
+    """
+
+    MAX_ENTRIES = 32
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._entries = collections.OrderedDict()
+
+    def get(self, path: str) -> tuple[bytes, dict]:
+        a = Config.path_a / path
+        b = Config.path_b / path
+        key = (path, a.stat().st_mtime_ns, b.stat().st_mtime_ns)
+
+        with self._lock:
+            hit = self._entries.get(key)
+            if hit is not None:
+                self._entries.move_to_end(key)
+                logger.debug(f"Diff cache hit: {path}")
+                return hit
+
+        logger.debug(f"Rendering diff: {path}")
+        with Config.browser_lock:
+            diff, _ = html_render_diff(a, b, Config.browser)
+
+        width, height = diff.size
+        bbox = diff.getbbox()
+        stats = {
+            "available": True,
+            "identical": bbox is None,
+            "width": width,
+            "height": height,
+        }
+        if bbox is not None:
+            left, top, right, bottom = bbox
+            stats["first_diff"] = top / height
+            stats["area"] = ((right - left) * (bottom - top)) / (width * height)
+            stats["regions"] = diff_regions(diff)
+
+        buffer = io.BytesIO()
+        highlight(diff).save(buffer, "PNG", optimize=True)
+        result = (buffer.getvalue(), stats)
+
+        with self._lock:
+            self._entries[key] = result
+            while len(self._entries) > self.MAX_ENTRIES:
+                self._entries.popitem(last=False)
+
+        return result
+
+
+app = Flask(__name__)
+
+accepted = Accepted()
+diff_cache = DiffCache()
+
+
+@app.context_processor
+def template_helpers() -> dict:
+    def static_url(filename: str) -> str:
+        """URL for a static asset, tagged with its modification time.
+
+        Keeps a page and its scripts in lockstep: a browser holding on to an
+        older stylesheet or script after an upgrade would otherwise render a
+        page whose markup no longer matches.
+        """
+        try:
+            stamp = int((Path(app.static_folder) / filename).stat().st_mtime)
+        except OSError:
+            stamp = 0
+        return url_for("static", filename=filename, v=stamp)
+
+    return {"static_url": static_url}
+
+
+@app.after_request
+def no_store_html(response: Response) -> Response:
+    # The listings are generated per request and go stale immediately.
+    if response.mimetype == "text/html":
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def resolve_in(root: Path, path: str) -> Path | None:
+    """Resolve ``path`` below ``root``, or None if it would escape it."""
+    candidate = (root / path).resolve()
+    if not candidate.is_relative_to(root.resolve()):
+        logger.warning(f"Rejecting path outside of {root}: {path}")
+        return None
+    return candidate
 
 
 def collect_entries() -> list[dict]:
@@ -269,6 +452,15 @@ def collect_entries() -> list[dict]:
     tree is walked exactly once with no recursive per-directory aggregation.
     """
     has_comparator = Config.comparator is not None
+
+    def entry(path: Path, message: str, result: str | None) -> dict:
+        key = str(path)
+        return {
+            "path": key,
+            "message": message,
+            "result": result,
+            "accepted": accepted.check(key),
+        }
 
     def collect_one_sided(existing: Path, root: Path, message: str) -> list[dict]:
         """Walk a directory present on only one side.
@@ -283,14 +475,7 @@ def collect_entries() -> list[dict]:
             if child.is_dir():
                 entries.extend(collect_one_sided(child, root, message))
             elif child.is_file() and comparable_file(child):
-                entries.append(
-                    {
-                        "path": str(child.relative_to(root)),
-                        "comparable": True,
-                        "message": message,
-                        "result": "different",
-                    }
-                )
+                entries.append(entry(child.relative_to(root), message, "different"))
 
         return entries
 
@@ -315,32 +500,11 @@ def collect_entries() -> list[dict]:
             rel = common_path / name
             if name in left_files and name in right_files:
                 result = Config.comparator.result(rel) if has_comparator else None
-                entries.append(
-                    {
-                        "path": str(rel),
-                        "comparable": True,
-                        "message": "",
-                        "result": result,
-                    }
-                )
+                entries.append(entry(rel, "", result))
             elif name in right_files:
-                entries.append(
-                    {
-                        "path": str(rel),
-                        "comparable": True,
-                        "message": "missing in reference (A)",
-                        "result": "different",
-                    }
-                )
+                entries.append(entry(rel, "missing in reference (A)", "different"))
             else:
-                entries.append(
-                    {
-                        "path": str(rel),
-                        "comparable": True,
-                        "message": "missing in monitored (B)",
-                        "result": "different",
-                    }
-                )
+                entries.append(entry(rel, "missing in monitored (B)", "different"))
 
         for name in sorted(left_dirs ^ right_dirs):
             if name in left_dirs:
@@ -366,296 +530,57 @@ def collect_entries() -> list[dict]:
     return entries
 
 
-@app.route("/script.js")
-def script_js():
-    logger.debug("Serving script.js")
-
-    return r"""
-function updateRef(path) {
-  fetch(`/update_ref/${path}`)
-    .then(response => {
-      if (response.ok) {
-        alert(`Reference updated for ${path}`);
-        location.reload();
-      } else {
-        alert(`Failed to update reference for ${path}: ${response.statusText}`);
-      }
-    })
-    .catch(error => {
-      alert(`Error updating reference for ${path}: ${error}`);
-    });
-}
-"""
-
-
 @app.route("/")
 def root():
     logger.debug("Generating root directory listing")
 
-    has_comparator = Config.comparator is not None
-    entries = collect_entries()
-
-    def badge(result: str | None) -> str:
-        if result is None:
-            return ""
-        return f'<span class="badge {result}">{result}</span>'
-
-    rows = []
-    for e in entries:
-        path = e["path"]
-        if e["comparable"]:
-            name_cell = f'<a href="/compare/{path}" target="_blank">{path}</a>'
-        else:
-            name_cell = f"<span>{path}</span>"
-        rows.append(
-            f'<tr data-path="{path}" data-status="{e["result"] or ""}">'
-            f'<td class="status">{badge(e["result"])}</td>'
-            f'<td class="path">{name_cell}</td>'
-            f'<td class="message">{e["message"]}</td>'
-            f'<td class="actions"><button class="btn" onclick="updateRef(\'{path}\')">update ref</button></td>'
-            f"</tr>"
-        )
-
-    log_link = ""
-    if Config.log_file is not None:
-        log_link = f'<a href="/logfile" target="_blank">log file</a>'
-
-    head = r"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>compare-html</title>
-<style>
-:root {
-  --green: #137333; --green-bg: #e6f4ea;
-  --red: #c5221f;   --red-bg: #fce8e6;
-  --amber: #b06000; --amber-bg: #fef7e0;
-  --border: #e0e0e0; --muted: #5f6368;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  color: #202124;
-  background: #fafafa;
-}
-header {
-  position: sticky; top: 0; z-index: 2;
-  background: #fff; border-bottom: 1px solid var(--border);
-  padding: 12px 20px;
-}
-.title { font-size: 18px; font-weight: 600; }
-.paths { font-size: 12px; color: var(--muted); margin-top: 4px; }
-.paths code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.toolbar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-  margin-top: 10px;
-}
-.toolbar input[type="search"] {
-  flex: 1 1 220px; min-width: 160px;
-  padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
-  font-size: 13px;
-}
-.chips { display: flex; gap: 6px; }
-.chip {
-  font-size: 12px; padding: 3px 9px; border-radius: 12px;
-  background: #f1f3f4; color: var(--muted); white-space: nowrap;
-}
-.chip.same { background: var(--green-bg); color: var(--green); }
-.chip.different { background: var(--red-bg); color: var(--red); }
-.chip.pending { background: var(--amber-bg); color: var(--amber); }
-.filters { display: flex; gap: 4px; }
-.filters button {
-  font-size: 12px; padding: 5px 10px; border: 1px solid var(--border);
-  background: #fff; border-radius: 6px; cursor: pointer; color: var(--muted);
-}
-.filters button.active { background: #202124; color: #fff; border-color: #202124; }
-.btn {
-  font-size: 12px; padding: 4px 8px; border: 1px solid var(--border);
-  background: #fff; border-radius: 6px; cursor: pointer;
-}
-.btn:hover { background: #f1f3f4; }
-table { width: 100%; border-collapse: collapse; }
-thead th {
-  position: sticky; top: var(--header-h, 0px); z-index: 1;
-  text-align: left; font-size: 12px; color: var(--muted);
-  font-weight: 600; padding: 8px 12px; background: #f8f9fa;
-  border-bottom: 1px solid var(--border);
-}
-tbody td { padding: 6px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
-tbody tr:hover { background: #f8f9fa; }
-td.path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-td.path a { color: #1a73e8; text-decoration: none; }
-td.path a:hover { text-decoration: underline; }
-td.path span { color: var(--muted); }
-td.message { color: var(--muted); font-size: 12px; }
-td.status { white-space: nowrap; }
-.badge {
-  display: inline-block; padding: 1px 8px; border-radius: 10px;
-  font-size: 11px; font-weight: 600;
-}
-.badge.same { background: var(--green-bg); color: var(--green); }
-.badge.different { background: var(--red-bg); color: var(--red); }
-.badge.pending { background: var(--amber-bg); color: var(--amber); }
-</style>
-<script src="/script.js"></script>
-</head>
-<body>
-"""
-
-    header = rf"""<header>
-  <div class="title">compare-html</div>
-  <div class="paths">
-    <div>reference (A): <code>{Config.path_a}</code></div>
-    <div>monitored (B): <code>{Config.path_b}</code></div>
-  </div>
-  <div class="toolbar">
-    <input type="search" id="search" placeholder="filter by path…" oninput="applyFilter()">
-    <div class="chips">
-      <span class="chip" id="chip-total">0 total</span>
-      <span class="chip same" id="chip-same">0 same</span>
-      <span class="chip different" id="chip-different">0 diff</span>
-      <span class="chip pending" id="chip-pending">0 pending</span>
-    </div>
-    <div class="filters">
-      <button data-filter="all" class="active" onclick="setFilter(this)">All</button>
-      <button data-filter="different" onclick="setFilter(this)">Differences</button>
-      <button data-filter="pending" onclick="setFilter(this)">Pending</button>
-      <button data-filter="same" onclick="setFilter(this)">Same</button>
-    </div>
-    <button class="btn" id="update-all" onclick="updateAll()">Update all in view</button>
-    {log_link}
-  </div>
-</header>
-"""
-
-    table = (
-        "<table><thead><tr>"
-        "<th>Status</th><th>Path</th><th>Message</th><th>Actions</th>"
-        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+    return render_template(
+        "index.html",
+        entries=collect_entries(),
+        live=Config.comparator is not None,
+        path_a=Config.path_a,
+        path_b=Config.path_b,
+        log_file=Config.log_file,
     )
 
-    script = (
-        r"""
-<script>
-const LIVE = """
-        + ("true" if has_comparator else "false")
-        + r""";
-let activeFilter = "all";
 
-function badgeHtml(status) {
-  if (!status) return "";
-  return `<span class="badge ${status}">${status}</span>`;
-}
+@app.route("/compare/<path:path>")
+def compare(path: str):
+    logger.debug(f"Generating comparison page for path: {path}")
 
-function setFilter(btn) {
-  activeFilter = btn.dataset.filter;
-  document.querySelectorAll(".filters button")
-    .forEach(b => b.classList.toggle("active", b === btn));
-  applyFilter();
-}
+    a = resolve_in(Config.path_a, path)
+    b = resolve_in(Config.path_b, path)
+    if a is None or b is None:
+        return "Invalid path", 400
 
-function applyFilter() {
-  const q = document.getElementById("search").value.toLowerCase();
-  document.querySelectorAll("tbody tr").forEach(tr => {
-    const st = tr.dataset.status;
-    const matchesFilter = activeFilter === "all" || st === activeFilter;
-    const matchesSearch = !q || tr.dataset.path.toLowerCase().includes(q);
-    tr.hidden = !(matchesFilter && matchesSearch);
-  });
-}
+    return render_template(
+        "compare.html",
+        path=path,
+        file_a=Config.path_a / path,
+        file_b=Config.path_b / path,
+        live=Config.comparator is not None,
+        diff_available=Config.driver is not None and a.is_file() and b.is_file(),
+    )
 
-function updateSummary() {
-  const counts = {total: 0, same: 0, different: 0, pending: 0};
-  document.querySelectorAll("tbody tr").forEach(tr => {
-    counts.total++;
-    const st = tr.dataset.status;
-    if (counts[st] !== undefined) counts[st]++;
-  });
-  document.getElementById("chip-total").textContent = counts.total + " total";
-  document.getElementById("chip-same").textContent = counts.same + " same";
-  document.getElementById("chip-different").textContent = counts.different + " diff";
-  document.getElementById("chip-pending").textContent = counts.pending + " pending";
-}
 
-async function updateAll() {
-  const rows = [...document.querySelectorAll("tbody tr")].filter(tr => !tr.hidden);
-  if (rows.length === 0) {
-    alert("No files in the current view.");
-    return;
-  }
-  if (!confirm(`Update reference for ${rows.length} file(s) in the current view?`)) return;
+@app.route("/api/entries")
+def api_entries():
+    logger.debug("Serving entries")
 
-  const btn = document.getElementById("update-all");
-  const label = btn.textContent;
-  btn.disabled = true;
-
-  const failed = [];
-  let done = 0;
-  for (const tr of rows) {
-    const path = tr.dataset.path;
-    btn.textContent = `Updating ${++done}/${rows.length}…`;
-    try {
-      const res = await fetch(`/update_ref/${path}`);
-      if (!res.ok) failed.push(path);
-    } catch (e) {
-      failed.push(path);
+    return {
+        "live": Config.comparator is not None,
+        "entries": collect_entries(),
     }
-  }
-
-  btn.disabled = false;
-  btn.textContent = label;
-  if (failed.length) {
-    alert(`Updated ${rows.length - failed.length}/${rows.length}. Failed:\n` + failed.join("\n"));
-  }
-  location.reload();
-}
-
-async function poll() {
-  try {
-    const res = await fetch("/status");
-    if (!res.ok) return;
-    const data = await res.json();
-    document.querySelectorAll("tbody tr").forEach(tr => {
-      const st = data[tr.dataset.path];
-      if (st && st !== tr.dataset.status) {
-        tr.dataset.status = st;
-        tr.querySelector(".status").innerHTML = badgeHtml(st);
-      }
-    });
-    updateSummary();
-    applyFilter();
-  } catch (e) {}
-}
-
-function syncHeaderHeight() {
-  const h = document.querySelector("header").offsetHeight;
-  document.documentElement.style.setProperty("--header-h", h + "px");
-}
-syncHeaderHeight();
-window.addEventListener("resize", syncHeaderHeight);
-
-updateSummary();
-if (LIVE) setInterval(poll, 1500);
-</script>
-</body>
-</html>
-"""
-    )
-
-    return head + header + table + script
 
 
 @app.route("/status")
 def status():
+    """Legacy status endpoint: a flat path -> result mapping."""
     logger.debug("Serving comparison status")
 
     if Config.comparator is None:
         return {}
 
-    # Walk the filesystem the same way the page does so a poll reflects the
-    # current state (including files created/deleted after startup), rather
-    # than a cache the watchdog may not have kept current.
     return {e["path"]: e["result"] for e in collect_entries()}
 
 
@@ -669,110 +594,78 @@ def logfile():
     return send_from_directory(Config.log_file.parent, Config.log_file.name)
 
 
-@app.route("/compare/<path:path>")
-def compare(path: str):
-    logger.debug(f"Generating comparison page for path: {path}")
+def render_diff(path: str) -> tuple[bytes | None, dict, int]:
+    """Render (or fetch from cache) the diff for ``path``.
 
-    if not isinstance(path, str):
-        raise TypeError("Path must be a string")
+    Returns the PNG bytes, the statistics and an HTTP status code; the bytes
+    are None when no diff could be produced.
+    """
+    if Config.driver is None:
+        return None, {"available": False, "error": "no browser driver"}, 404
 
-    return rf"""<!DOCTYPE html>
-<html>
-<head>
-<style>
-html,body {{height:100%;margin:0;}}
-</style>
-<script src="/script.js"></script>
-</head>
-<body style="display:flex;flex-flow:row;">
-<div style="display:flex;flex:1;flex-flow:column;margin:5px;">
-  <a href="/file/a/{path}" target="_blank">{Config.path_a / path}</a>
-  <iframe id="a" src="/file/a/{path}" title="a" frameborder="0" align="left" style="flex:1;"></iframe>
-</div>
-<div style="display:flex;flex:0 0 50px;flex-flow:column;">
-  <a href="/image_diff/{path}" target="_blank">diff</a>
-  <button onclick="updateRef('{path}')">▶</button>
-  <img src="/image_diff/{path}" width="50" height="0" style="flex:1;">
-</div>
-<div style="display:flex;flex:1;flex-flow:column;margin:5px;">
-  <a href="/file/b/{path}" target="_blank">{Config.path_b / path}</a>
-  <iframe id="b" src="/file/b/{path}" title="b" frameborder="0" align="right" style="flex:1;"></iframe>
-</div>
-<script>
-var iframe_a = document.getElementById('a');
-var iframe_b = document.getElementById('b');
-iframe_a.contentWindow.addEventListener('scroll', function(event) {{
-  iframe_b.contentWindow.scrollTo(iframe_a.contentWindow.scrollX, iframe_a.contentWindow.scrollY);
-}});
-iframe_b.contentWindow.addEventListener('scroll', function(event) {{
-  iframe_a.contentWindow.scrollTo(iframe_b.contentWindow.scrollX, iframe_b.contentWindow.scrollY);
-}});
-</script>
-</body>
-</html>
-"""
+    a = resolve_in(Config.path_a, path)
+    b = resolve_in(Config.path_b, path)
+    if a is None or b is None:
+        return None, {"available": False, "error": "invalid path"}, 400
+    if not a.is_file() or not b.is_file():
+        return None, {"available": False, "error": "file missing on one side"}, 404
+
+    try:
+        image, stats = diff_cache.get(path)
+    except Exception as error:
+        logger.exception(f"Failed to render diff for path: {path}")
+        return None, {"available": False, "error": str(error)}, 500
+
+    return image, stats, 200
 
 
 @app.route("/image_diff/<path:path>")
 def image_diff(path: str):
-    logger.debug(f"Generating image diff for path: {path}")
+    logger.debug(f"Serving image diff for path: {path}")
 
-    if not isinstance(path, str):
-        raise TypeError("Path must be a string")
+    image, stats, code = render_diff(path)
+    if image is None:
+        return stats.get("error", "image diff not available"), code
 
-    if Config.driver is None:
-        return "Image diff not available without browser driver", 404
+    return Response(image, mimetype="image/png")
 
-    if not (Config.path_a / path).is_file() or not (Config.path_b / path).is_file():
-        return "Image diff not available: file missing on one side", 404
 
-    with Config.browser_lock:
-        diff, _ = html_render_diff(
-            Config.path_a / path,
-            Config.path_b / path,
-            Config.browser,
-        )
-    tmp = io.BytesIO()
-    diff.save(tmp, "JPEG", quality=70)
-    tmp.seek(0)
-    return send_file(tmp, mimetype="image/jpeg")
+@app.route("/api/diff_info/<path:path>")
+def api_diff_info(path: str):
+    logger.debug(f"Serving diff info for path: {path}")
+
+    _, stats, code = render_diff(path)
+    return stats, code
 
 
 @app.route("/file/<variant>/<path:path>")
 def file(variant: str, path: str):
     logger.debug(f"Serving file for variant: {variant}, path: {path}")
 
-    if not isinstance(variant, str) or not isinstance(path, str):
-        raise TypeError("Variant and path must be strings")
     if variant not in ["a", "b"]:
-        raise ValueError("Variant must be 'a' or 'b'")
+        return "Variant must be 'a' or 'b'", 404
 
     variant_root = Config.path_a if variant == "a" else Config.path_b
 
-    if not (variant_root / path).is_file():
+    resolved = resolve_in(variant_root, path)
+    if resolved is None:
+        return "Invalid path", 400
+
+    if not resolved.is_file():
         side = "reference (A)" if variant == "a" else "monitored (B)"
-        return (
-            "<!DOCTYPE html><html><body style='margin:0;display:flex;"
-            "align-items:center;justify-content:center;height:100vh;"
-            "font-family:sans-serif;color:#5f6368;background:#fafafa;'>"
-            f"<div>file missing in {side}</div></body></html>"
-        )
+        return render_template("missing.html", side=side), 404
 
     return send_from_directory(variant_root, path)
 
 
-@app.route("/update_ref/<path:path>")
-def update_ref(path: str):
-    logger.debug(f"Updating reference for path: {path}")
+def do_update_ref(path: str):
+    src = resolve_in(Config.path_b, path)
+    dst = resolve_in(Config.path_a, path)
 
-    if not isinstance(path, str):
-        raise TypeError("Path must be a string")
-
-    src = Config.path_b / path
-    dst = Config.path_a / path
-
+    if src is None or dst is None:
+        return {"error": "invalid path"}, 400
     if not src.exists():
-        return f"Source file does not exist: {src}", 404
+        return {"error": f"source does not exist: {src}"}, 404
 
     dst.parent.mkdir(parents=True, exist_ok=True)
 
@@ -781,6 +674,31 @@ def update_ref(path: str):
     else:
         shutil.copytree(src, dst, dirs_exist_ok=True)
 
+    accepted.mark(path)
+
+    # The watchdog picks the copy up as well, but re-comparing right away keeps
+    # the UI from briefly showing the old result after an accepted diff.
+    if Config.comparator is not None and src.is_file():
+        Config.comparator.submit(Path(path))
+
+    return {"ok": True, "path": path}, 200
+
+
+@app.route("/api/update_ref/<path:path>", methods=["POST"])
+def api_update_ref(path: str):
+    logger.debug(f"Updating reference for path: {path}")
+
+    return do_update_ref(path)
+
+
+@app.route("/update_ref/<path:path>", methods=["GET", "POST"])
+def update_ref(path: str):
+    """Legacy endpoint kept for scripted use; prefer POST /api/update_ref."""
+    logger.debug(f"Updating reference for path: {path}")
+
+    body, code = do_update_ref(path)
+    if code != 200:
+        return body["error"], code
     return "Reference updated", 200
 
 
