@@ -9,6 +9,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
@@ -25,7 +26,9 @@ def to_url(path: str | Path) -> str:
     return path
 
 
-def screenshot(browser: webdriver.Remote, url: str) -> Image.Image:
+def screenshot(
+    browser: webdriver.Remote, url: str, settling_time: float = 0
+) -> Image.Image:
     if not isinstance(url, str):
         raise TypeError(f"Expected str, got {type(url)}")
     if not isinstance(browser, webdriver.Remote):
@@ -35,11 +38,6 @@ def screenshot(browser: webdriver.Remote, url: str) -> Image.Image:
 
     target_find_by = By.TAG_NAME
     target = "body"
-    loaded_page_settling_time = 0
-
-    # TODO for pdf2htmlex the second screenshot sometimes fades in from white... not sure why, but a sleep solves it
-    if "poppler" in url:
-        loaded_page_settling_time = 0.3
 
     web_driver_wait = WebDriverWait(browser, 10)
     web_driver_wait.until(
@@ -49,10 +47,43 @@ def screenshot(browser: webdriver.Remote, url: str) -> Image.Image:
         lambda driver: driver.execute_script("return document.readyState") == "complete"
     )
 
-    time.sleep(loaded_page_settling_time)
+    settle(browser, settling_time)
 
     png = browser.get_screenshot_as_png()
     return Image.open(io.BytesIO(png))
+
+
+#: Waits for the fonts and then for two frames, and answers when both are done.
+#: `readyState` does not cover a web font: the load event fires while the face
+#: is still arriving, and the text is laid out again once it lands. Two frames
+#: then say a paint has happened rather than merely been asked for.
+_SETTLE = """
+const done = arguments[arguments.length - 1];
+const frames = () =>
+  requestAnimationFrame(() => requestAnimationFrame(() => done(true)));
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(frames, frames);
+"""
+
+
+def settle(browser: webdriver.Remote, settling_time: float = 0) -> None:
+    """Waits until the page has finished painting what it loaded.
+
+    A screenshot taken before that catches the page mid-render, which is what
+    makes an otherwise identical pair compare as different from one run to the
+    next.
+    """
+    if not isinstance(browser, webdriver.Remote):
+        raise TypeError(f"Expected webdriver.Remote, got {type(browser)}")
+
+    browser.set_script_timeout(10)
+    try:
+        browser.execute_async_script(_SETTLE)
+    except WebDriverException:
+        # an old driver without async scripts still gets the sleep below
+        pass
+
+    if settling_time:
+        time.sleep(settling_time)
 
 
 def content_bottom(image: Image.Image) -> int:

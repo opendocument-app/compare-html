@@ -6,6 +6,8 @@ from pathlib import Path
 
 from htmlcmp.html_render_diff import get_browser, html_render_diff
 
+logger = logging.getLogger(__name__)
+
 
 class bcolors:
     HEADER = "\033[95m"
@@ -40,22 +42,41 @@ def compare_json(a: Path, b: Path) -> bool:
     return json_a == json_b
 
 
-def compare_html(a: Path, b: Path, browser=None, diff_output: Path = None) -> bool:
+def compare_html(
+    a: Path, b: Path, browser=None, diff_output: Path = None, retries: int = 1
+) -> bool:
+    """Whether `a` and `b` render to the same pixels.
+
+    A mismatch is rendered again before it is reported, `retries` times. A real
+    difference is in the markup and comes back every time; one that does not is
+    the page having been caught mid-render, and a browser gives no promise that
+    two runs of the same page paint alike at the same instant. The retry costs
+    nothing on the matching files, which are almost all of them.
+    """
     if not isinstance(a, Path) or not isinstance(b, Path):
         raise TypeError("Both arguments must be of type Path")
     if not a.is_file() or not b.is_file():
         raise FileNotFoundError("Both arguments must be files")
+    if not isinstance(retries, int) or retries < 0:
+        raise ValueError(f"retries must be a non-negative int, got {retries!r}")
 
     if browser is None:
         browser = get_browser("firefox")
-    diff, (image_a, image_b) = html_render_diff(a, b, browser=browser)
-    result = diff.getbbox() is None
-    if diff_output is not None and not result:
+
+    for attempt in range(retries + 1):
+        diff, (image_a, image_b) = html_render_diff(a, b, browser=browser)
+        if diff.getbbox() is None:
+            return True
+        logger.debug(
+            "%s and %s differ on attempt %d of %d", a, b, attempt + 1, retries + 1
+        )
+
+    if diff_output is not None:
         diff_output.mkdir(parents=True, exist_ok=True)
         image_a.save(diff_output / "a.png")
         image_b.save(diff_output / "b.png")
         diff.save(diff_output / "diff.png")
-    return result
+    return False
 
 
 def compare_files(a: Path, b: Path, **kwargs) -> bool:
