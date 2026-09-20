@@ -34,11 +34,14 @@ class Config:
 class Task:
     """A single file comparison between the reference (A) and monitored (B) tree."""
 
-    def __init__(self, rel: Path, a: Path, b: Path, diff_output: Path = None):
+    def __init__(
+        self, rel: Path, a: Path, b: Path, diff_output: Path = None, retries: int = 1
+    ):
         self.rel = rel
         self.a = a
         self.b = b
         self.diff_output = diff_output
+        self.retries = retries
 
 
 class Failure:
@@ -54,7 +57,7 @@ class Failure:
 
 
 def collect_tasks(
-    a: Path, b: Path, root: Path = None, diff_output: Path = None
+    a: Path, b: Path, root: Path = None, diff_output: Path = None, retries: int = 1
 ) -> tuple[list[Task], list[Failure]]:
     """Walk both trees once and return (comparable tasks, structural failures).
 
@@ -91,6 +94,7 @@ def collect_tasks(
                     a / name,
                     b / name,
                     None if diff_output is None else diff_output / name,
+                    retries=retries,
                 )
             )
         elif name in left_files:
@@ -107,6 +111,7 @@ def collect_tasks(
             b / name,
             root=root,
             diff_output=None if diff_output is None else diff_output / name,
+            retries=retries,
         )
         tasks.extend(sub_tasks)
         failures.extend(sub_failures)
@@ -126,7 +131,13 @@ def collect_tasks(
 def run_task(task: Task) -> bool:
     logger.debug("Comparing %s", task.rel)
     browser = getattr(Config.thread_local, "browser", None)
-    return compare_files(task.a, task.b, browser=browser, diff_output=task.diff_output)
+    return compare_files(
+        task.a,
+        task.b,
+        browser=browser,
+        diff_output=task.diff_output,
+        retries=task.retries,
+    )
 
 
 def make_executor(max_workers: int, driver: str | None) -> ThreadPoolExecutor:
@@ -248,6 +259,7 @@ def run(
     driver: str | None,
     max_workers: int,
     diff_output: Path | None,
+    retries: int,
     console: Console,
     live: bool,
     github: bool,
@@ -256,7 +268,7 @@ def run(
         f"[bold]Comparing[/bold] {escape(str(a))} [dim]→[/dim] {escape(str(b))}"
     )
 
-    tasks, failures = collect_tasks(a, b, diff_output=diff_output)
+    tasks, failures = collect_tasks(a, b, diff_output=diff_output, retries=retries)
     logger.info(
         "Collected %d comparable file(s), %d structural difference(s)",
         len(tasks),
@@ -326,6 +338,13 @@ def main():
         default=0,
         help="Increase verbosity (-v, -vv, -vvv)",
     )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=1,
+        help="Re-render a mismatch this many times before reporting it "
+        "(default: 1; 0 reports the first render)",
+    )
     parser.add_argument("--log-file", type=Path, help="Path to log file")
     parser.add_argument(
         "--log-file-verbosity", type=int, help="Log file verbosity level"
@@ -351,6 +370,7 @@ def main():
         driver=driver,
         max_workers=args.max_workers,
         diff_output=args.diff_output,
+        retries=args.retries,
         console=console,
         live=live,
         github=github,
