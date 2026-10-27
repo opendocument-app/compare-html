@@ -57,20 +57,18 @@ class Failure:
 
 
 def collect_tasks(
-    a: Path, b: Path, root: Path = None, diff_output: Path = None, retries: int = 1
+    a: Path, b: Path, rel: Path = Path(), diff_output: Path = None, retries: int = 1
 ) -> tuple[list[Task], list[Failure]]:
     """Walk both trees once and return (comparable tasks, structural failures).
 
     Structural failures are files/directories present on only one side; they are
-    known to differ up-front and never get submitted to the executor.
+    known to differ up-front and never get submitted to the executor. `rel` is
+    the path of `a` and `b` below the roots of the walk.
     """
     if not isinstance(a, Path) or not isinstance(b, Path):
         raise TypeError("Both arguments must be of type Path")
     if not a.is_dir() or not b.is_dir():
         raise FileNotFoundError("Both arguments must be directories")
-
-    if root is None:
-        root = a
 
     tasks: list[Task] = []
     failures: list[Failure] = []
@@ -86,11 +84,10 @@ def collect_tasks(
     }
 
     for name in sorted(left_files | right_files):
-        rel = (a / name).relative_to(root)
         if name in left_files and name in right_files:
             tasks.append(
                 Task(
-                    rel,
+                    rel / name,
                     a / name,
                     b / name,
                     None if diff_output is None else diff_output / name,
@@ -98,9 +95,9 @@ def collect_tasks(
                 )
             )
         elif name in left_files:
-            failures.append(Failure(rel, "missing", "missing in monitored (B)"))
+            failures.append(Failure(rel / name, "missing", "missing in monitored (B)"))
         else:
-            failures.append(Failure(rel, "missing", "missing in reference (A)"))
+            failures.append(Failure(rel / name, "missing", "missing in reference (A)"))
 
     left_dirs = {name for name in left if (a / name).is_dir()}
     right_dirs = {name for name in right if (b / name).is_dir()}
@@ -109,7 +106,7 @@ def collect_tasks(
         sub_tasks, sub_failures = collect_tasks(
             a / name,
             b / name,
-            root=root,
+            rel=rel / name,
             diff_output=None if diff_output is None else diff_output / name,
             retries=retries,
         )
@@ -117,13 +114,9 @@ def collect_tasks(
         failures.extend(sub_failures)
 
     for name in sorted(left_dirs - right_dirs):
-        failures.append(
-            Failure((a / name).relative_to(root), "missing", "missing in monitored (B)")
-        )
+        failures.append(Failure(rel / name, "missing", "missing in monitored (B)"))
     for name in sorted(right_dirs - left_dirs):
-        failures.append(
-            Failure((b / name).relative_to(root), "missing", "missing in reference (A)")
-        )
+        failures.append(Failure(rel / name, "missing", "missing in reference (A)"))
 
     return tasks, failures
 
