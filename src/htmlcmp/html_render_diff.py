@@ -119,6 +119,9 @@ def get_browser(
         browser = webdriver.Chrome(options=options)
     else:
         raise ValueError(f"Unsupported driver: {driver}")
+    # Local WebDriver constructors do not expose ClientConfig. Disable urllib3's
+    # automatic GET retries on their pool: a stalled screenshot must fail once.
+    browser.command_executor._conn.connection_pool_kw["retries"] = 0
     browser.set_window_size(max_width, max_height)
     return browser
 

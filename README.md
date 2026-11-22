@@ -10,6 +10,25 @@ Provides various entry points to run:
 
 Used for regression testing in https://github.com/opendocument-app/OpenDocument.core.
 
+## Browser timeouts in the CLI
+
+`compare-html --timeout 120` limits each browser comparison to 120 seconds,
+including browser startup, both screenshots, and any `--retries` of a pixel
+mismatch. The deadline starts when a worker takes the file, not while it waits
+in the queue. Use a larger positive value for especially expensive pages.
+
+A timeout is reported as an error and makes the command exit unsuccessfully.
+The worker and its browser processes are discarded; the next file gets a fresh
+browser. Successful comparisons reuse their browser. Shutdown also has bounded
+cleanup, so an unresponsive Selenium `quit()` cannot block the command forever.
+Cleanup can take a few seconds beyond the comparison deadline.
+
+WebDriver HTTP requests are not automatically retried. `--retries` still
+rechecks visual mismatches; it does not repeat a timed-out browser command.
+This does not change the pixel comparison or hide errors from slow renderers.
+The per-comparison deadline applies to `compare-html`, not the interactive
+`compare-html-server`.
+
 ## Reviewing differences in the browser
 
 `compare-html-server` serves two pages:

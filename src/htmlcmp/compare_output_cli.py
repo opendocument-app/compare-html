@@ -5,9 +5,9 @@ import os
 import sys
 import logging
 import argparse
-import threading
+import math
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 
 from rich.console import Console
 from rich.markup import escape
@@ -21,14 +21,10 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from htmlcmp.html_render_diff import get_browser
-from htmlcmp.common import comparable_file, compare_files, setup_logging
+from htmlcmp.common import comparable_file, setup_logging
+from htmlcmp.comparison_worker import ComparisonExecutor
 
 logger = logging.getLogger(__name__)
-
-
-class Config:
-    thread_local = threading.local()
 
 
 class Task:
@@ -119,31 +115,6 @@ def collect_tasks(
         failures.append(Failure(rel / name, "missing", "missing in reference (A)"))
 
     return tasks, failures
-
-
-def run_task(task: Task) -> bool:
-    logger.debug("Comparing %s", task.rel)
-    browser = getattr(Config.thread_local, "browser", None)
-    return compare_files(
-        task.a,
-        task.b,
-        browser=browser,
-        diff_output=task.diff_output,
-        retries=task.retries,
-    )
-
-
-def make_executor(max_workers: int, driver: str | None) -> ThreadPoolExecutor:
-    def initializer():
-        # One browser per worker thread. Without a driver we only ever compare
-        # JSON / byte-identical files, so no browser is needed.
-        if driver is not None:
-            if getattr(Config.thread_local, "browser", None) is None:
-                logger.info("Starting %s browser for worker thread", driver)
-                Config.thread_local.browser = get_browser(driver=driver)
-
-    logger.info("Creating executor with %d worker(s)", max_workers)
-    return ThreadPoolExecutor(max_workers=max_workers, initializer=initializer)
 
 
 def github_error(rel: Path, reason: str) -> None:
@@ -256,7 +227,10 @@ def run(
     console: Console,
     live: bool,
     github: bool,
+    timeout: float = 120.0,
 ) -> int:
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be a positive finite number")
     console.print(
         f"[bold]Comparing[/bold] {escape(str(a))} [dim]→[/dim] {escape(str(b))}"
     )
@@ -280,15 +254,24 @@ def run(
     if total == 0:
         console.print("[dim]No comparable files to compare.[/dim]")
     else:
-        executor = make_executor(max_workers, driver)
+        executor = ComparisonExecutor(max_workers, driver, timeout)
         try:
-            future_to_task = {executor.submit(run_task, t): t for t in tasks}
+            future_to_task = {
+                executor.submit(
+                    executor.compare,
+                    t.a,
+                    t.b,
+                    diff_output=t.diff_output,
+                    retries=t.retries,
+                ): t
+                for t in tasks
+            }
             if live:
                 _run_live(future_to_task, console, failures, github)
             else:
                 _run_plain(future_to_task, console, failures, github)
         finally:
-            executor.shutdown(wait=True)
+            executor.shutdown(wait=True, cancel_futures=True)
 
     _print_summary(console, total, failures)
 
@@ -338,11 +321,20 @@ def main():
         help="Re-render a mismatch this many times before reporting it "
         "(default: 1; 0 reports the first render)",
     )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=120.0,
+        help="Deadline in seconds per browser comparison, including startup "
+        "and mismatch retries (default: 120)",
+    )
     parser.add_argument("--log-file", type=Path, help="Path to log file")
     parser.add_argument(
         "--log-file-verbosity", type=int, help="Log file verbosity level"
     )
     args = parser.parse_args()
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
+        parser.error("--timeout must be a positive finite number")
 
     setup_logging(args.verbose, args.log_file, args.log_file_verbosity)
 
@@ -367,6 +359,7 @@ def main():
         console=console,
         live=live,
         github=github,
+        timeout=args.timeout,
     )
 
 
