@@ -41,7 +41,11 @@ def test_html_render_diff():
     with pytest.raises(TypeError):
         html_render_diff(str(test1), str(test2), None)
 
-    diff, _ = html_render_diff(test1, test1, get_browser("firefox"))
-    assert diff.getbbox() is None
-    diff, _ = html_render_diff(test1, test2, get_browser("firefox"))
-    assert diff.getbbox() is not None
+    browser = get_browser("firefox")
+    try:
+        diff, _ = html_render_diff(test1, test1, browser)
+        assert diff.getbbox() is None
+        diff, _ = html_render_diff(test1, test2, browser)
+        assert diff.getbbox() is not None
+    finally:
+        browser.quit()

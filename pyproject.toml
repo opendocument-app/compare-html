@@ -18,6 +18,7 @@ dependencies = [
     "flask",
     "watchdog",
     "rich",
+    "psutil",
 ]
 
 [project.scripts]
