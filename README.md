@@ -16,6 +16,8 @@ Used for regression testing in https://github.com/opendocument-app/OpenDocument.
 including browser startup, both screenshots, and any `--retries` of a pixel
 mismatch. The deadline starts when a worker takes the file, not while it waits
 in the queue. Use a larger positive value for especially expensive pages.
+The same value configures WebDriver's HTTP and page-load timeouts, so increasing
+the deadline is not cut short by Selenium's default 120-second HTTP timeout.
 
 A timeout is reported as an error and makes the command exit unsuccessfully.
 The worker and its browser processes are discarded; the next file gets a fresh

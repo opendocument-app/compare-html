@@ -100,7 +100,11 @@ def content_bottom(image: Image.Image) -> int:
 
 
 def get_browser(
-    driver: str, max_width: int = 1000, max_height: int = 10000
+    driver: str,
+    max_width: int = 1000,
+    max_height: int = 10000,
+    *,
+    timeout: float | None = None,
 ) -> webdriver.Remote:
     if not isinstance(driver, str):
         raise TypeError(f"Expected str, got {type(driver)}")
@@ -122,6 +126,10 @@ def get_browser(
     # Local WebDriver constructors do not expose ClientConfig. Disable urllib3's
     # automatic GET retries on their pool: a stalled screenshot must fail once.
     browser.command_executor._conn.connection_pool_kw["retries"] = 0
+    if timeout is not None:
+        # The CLI's parent process enforces the whole comparison deadline.
+        browser.command_executor._client_config.timeout = timeout
+        browser.set_page_load_timeout(timeout)
     browser.set_window_size(max_width, max_height)
     return browser
 

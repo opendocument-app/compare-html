@@ -15,7 +15,7 @@ from htmlcmp.html_render_diff import get_browser
 logger = logging.getLogger(__name__)
 
 
-def _compare_loop(connection, driver):
+def _compare_loop(connection, driver, timeout):
     browser = None
     try:
         while True:
@@ -28,7 +28,7 @@ def _compare_loop(connection, driver):
                 and a.suffix == ".html"
                 and not filecmp.cmp(a, b, shallow=False)
             ):
-                browser = get_browser(driver)
+                browser = get_browser(driver, timeout=timeout)
             result = compare_files(a, b, browser=browser, **kwargs)
             connection.send((True, result))
     except Exception as exc:
@@ -52,7 +52,7 @@ class ComparisonWorker:
         context = multiprocessing.get_context("spawn")
         self._connection, child = context.Pipe()
         self._process = context.Process(
-            target=_compare_loop, args=(child, self.driver), daemon=True
+            target=_compare_loop, args=(child, self.driver, self.timeout), daemon=True
         )
         try:
             self._process.start()
