@@ -14,7 +14,7 @@ from htmlcmp import comparison_worker as worker_module
 from htmlcmp.comparison_worker import ComparisonExecutor, ComparisonWorker
 
 
-def controlled_worker(connection, driver):
+def controlled_worker(connection, driver, timeout):
     while True:
         request = connection.recv()
         if request is None:
@@ -35,14 +35,14 @@ def controlled_worker(connection, driver):
             connection.send((True, os.getpid()))
 
 
-def hanging_shutdown(connection, driver):
+def hanging_shutdown(connection, driver, timeout):
     connection.recv()
     connection.send((True, os.getpid()))
     connection.recv()
     time.sleep(60)
 
 
-def no_startup_response(connection, driver):
+def no_startup_response(connection, driver, timeout):
     time.sleep(60)
 
 
@@ -138,6 +138,20 @@ def test_identical_html_does_not_need_a_browser(tmp_path):
     # An invalid driver would fail if startup were attempted.
     with ComparisonExecutor(1, "not-a-browser", timeout=5) as executor:
         assert executor.submit(executor.compare, a, b).result() is True
+
+
+def test_comparison_deadline_reaches_browser_transport(monkeypatch, tmp_path):
+    a, b = tmp_path / "a.html", tmp_path / "b.html"
+    a.write_text("one")
+    b.write_text("two")
+    connection = Mock()
+    connection.recv.side_effect = [(a, b, {}), None]
+    factory = Mock()
+    monkeypatch.setattr(worker_module, "get_browser", factory)
+    monkeypatch.setattr(worker_module, "compare_files", Mock(return_value=True))
+    worker_module._compare_loop(connection, "firefox", 900)
+    factory.assert_called_once_with("firefox", timeout=900)
+    connection.send.assert_called_once_with((True, True))
 
 
 def test_startup_failure_is_reported_per_file(tmp_path):
