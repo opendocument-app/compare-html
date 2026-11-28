@@ -22,6 +22,8 @@ A page is screenshotted once it has stopped changing:
 - two frames have been painted since
 
 Waiting stops after 10 seconds, and the page is screenshotted as it is then.
+`--settle-timeout` changes that limit in `compare-html`, `compare-html-server`
+and `html-render-diff`.
 
 ## Browser timeouts in the CLI
 
@@ -29,6 +31,8 @@ Waiting stops after 10 seconds, and the page is screenshotted as it is then.
 including browser startup, both screenshots, and any `--retries` of a pixel
 mismatch. The deadline starts when a worker takes the file, not while it waits
 in the queue. Use a larger positive value for especially expensive pages.
+Each screenshot may wait up to `--settle-timeout` for its page, so keep
+`--timeout` above twice that times one more than `--retries`.
 The same value configures WebDriver's HTTP and page-load timeouts, so increasing
 the deadline is not cut short by Selenium's default 120-second HTTP timeout.
 

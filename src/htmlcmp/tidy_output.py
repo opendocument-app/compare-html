@@ -23,6 +23,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from htmlcmp import defaults
 from htmlcmp.common import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -314,8 +315,8 @@ def main():
         "-j",
         "--max-workers",
         type=int,
-        default=1,
-        help="Number of parallel tidy workers (default: 1)",
+        default=defaults.MAX_WORKERS,
+        help="Number of parallel tidy workers (default: %(default)s)",
     )
     parser.add_argument(
         "--details",

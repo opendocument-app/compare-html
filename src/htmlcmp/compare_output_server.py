@@ -19,12 +19,18 @@ import watchdog.events
 
 from PIL import Image
 
+from htmlcmp import defaults
 from htmlcmp.common import (
     comparable_file,
     compare_files,
     setup_logging,
 )
-from htmlcmp.html_render_diff import get_browser, html_render_diff
+from htmlcmp.html_render_diff import (
+    add_settle_timeout_argument,
+    check_settle_timeout,
+    get_browser,
+    html_render_diff,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +39,7 @@ class Config:
     path_a: Path = None
     path_b: Path = None
     driver: str = None
+    settle_timeout: float = defaults.SETTLE_TIMEOUT
     observer = None
     comparator = None
     browser = None
@@ -177,6 +184,7 @@ class Comparator:
                 Config.path_a / path,
                 Config.path_b / path,
                 browser=browser,
+                settle_timeout=Config.settle_timeout,
             )
         except Exception:
             # A file may have vanished or failed to render between submission
@@ -374,7 +382,9 @@ class DiffCache:
 
         logger.debug(f"Rendering diff: {path}")
         with Config.browser_lock:
-            diff, _ = html_render_diff(a, b, Config.browser)
+            diff, _ = html_render_diff(
+                a, b, Config.browser, settle_timeout=Config.settle_timeout
+            )
 
         width, height = diff.size
         bbox = diff.getbbox()
@@ -707,7 +717,7 @@ def main():
     parser.add_argument("ref", type=Path, help="Path to the reference directory")
     parser.add_argument("mon", type=Path, help="Path to the monitored directory")
     parser.add_argument("--driver", choices=["chrome", "firefox"])
-    parser.add_argument("--max-workers", type=int, default=1)
+    parser.add_argument("--max-workers", type=int, default=defaults.MAX_WORKERS)
     parser.add_argument("--compare", action="store_true")
     parser.add_argument(
         "--host",
@@ -715,6 +725,7 @@ def main():
         help="Host/interface to bind the server to (default: 0.0.0.0)",
     )
     parser.add_argument("--port", type=int, default=5000)
+    add_settle_timeout_argument(parser)
     parser.add_argument(
         "-v",
         "--verbose",
@@ -731,12 +742,14 @@ def main():
         "--log-file-verbosity", type=int, help="Log file verbosity level"
     )
     args = parser.parse_args()
+    check_settle_timeout(parser, args.settle_timeout)
 
     setup_logging(args.verbose, args.log_file, args.log_file_verbosity)
 
     Config.path_a = args.ref
     Config.path_b = args.mon
     Config.driver = args.driver
+    Config.settle_timeout = args.settle_timeout
     Config.browser = (
         get_browser(driver=args.driver) if args.driver is not None else None
     )

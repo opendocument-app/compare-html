@@ -79,3 +79,16 @@ def test_screenshot_leaves_an_infinite_animation_running(driver):
         assert time.monotonic() - started < 5
     finally:
         browser.quit()
+
+
+@pytest.mark.parametrize("driver", ["chrome", "firefox"])
+def test_screenshot_stops_waiting_at_the_settle_timeout(driver):
+    here = Path(__file__).parent
+    browser = get_browser(driver)
+    try:
+        diff, _ = html_render_diff(
+            here / "busy.html", here / "settled.html", browser, settle_timeout=0.3
+        )
+        assert diff.getbbox() is not None
+    finally:
+        browser.quit()

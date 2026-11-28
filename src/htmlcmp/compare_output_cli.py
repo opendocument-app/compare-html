@@ -21,8 +21,13 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from htmlcmp import defaults
 from htmlcmp.common import comparable_file, setup_logging
 from htmlcmp.comparison_worker import ComparisonExecutor
+from htmlcmp.html_render_diff import (
+    add_settle_timeout_argument,
+    check_settle_timeout,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +36,12 @@ class Task:
     """A single file comparison between the reference (A) and monitored (B) tree."""
 
     def __init__(
-        self, rel: Path, a: Path, b: Path, diff_output: Path = None, retries: int = 1
+        self,
+        rel: Path,
+        a: Path,
+        b: Path,
+        diff_output: Path = None,
+        retries: int = defaults.RETRIES,
     ):
         self.rel = rel
         self.a = a
@@ -53,7 +63,11 @@ class Failure:
 
 
 def collect_tasks(
-    a: Path, b: Path, rel: Path = Path(), diff_output: Path = None, retries: int = 1
+    a: Path,
+    b: Path,
+    rel: Path = Path(),
+    diff_output: Path = None,
+    retries: int = defaults.RETRIES,
 ) -> tuple[list[Task], list[Failure]]:
     """Walk both trees once and return (comparable tasks, structural failures).
 
@@ -227,10 +241,13 @@ def run(
     console: Console,
     live: bool,
     github: bool,
-    timeout: float = 120.0,
+    timeout: float = defaults.TIMEOUT,
+    settle_timeout: float = defaults.SETTLE_TIMEOUT,
 ) -> int:
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be a positive finite number")
+    if not math.isfinite(settle_timeout) or settle_timeout <= 0:
+        raise ValueError("settle_timeout must be a positive finite number")
     console.print(
         f"[bold]Comparing[/bold] {escape(str(a))} [dim]→[/dim] {escape(str(b))}"
     )
@@ -263,6 +280,7 @@ def run(
                     t.b,
                     diff_output=t.diff_output,
                     retries=t.retries,
+                    settle_timeout=settle_timeout,
                 ): t
                 for t in tasks
             }
@@ -288,9 +306,9 @@ def main():
     parser.add_argument(
         "--driver",
         choices=["chrome", "firefox", "none"],
-        default="firefox",
+        default=defaults.DRIVER,
         help="Browser used to render HTML diffs; 'none' compares only "
-        "JSON and byte-identical files (default: firefox)",
+        "JSON and byte-identical files (default: %(default)s)",
     )
     parser.add_argument(
         "--diff-output", type=Path, help="Directory to write diff images for mismatches"
@@ -299,8 +317,8 @@ def main():
         "-j",
         "--max-workers",
         type=int,
-        default=1,
-        help="Number of parallel comparison workers (default: 1)",
+        default=defaults.MAX_WORKERS,
+        help="Number of parallel comparison workers (default: %(default)s)",
     )
     parser.add_argument(
         "--no-progress",
@@ -317,17 +335,18 @@ def main():
     parser.add_argument(
         "--retries",
         type=int,
-        default=1,
+        default=defaults.RETRIES,
         help="Re-render a mismatch this many times before reporting it "
-        "(default: 1; 0 reports the first render)",
+        "(default: %(default)s; 0 reports the first render)",
     )
     parser.add_argument(
         "--timeout",
         type=float,
-        default=120.0,
+        default=defaults.TIMEOUT,
         help="Deadline in seconds per browser comparison, including startup "
-        "and mismatch retries (default: 120)",
+        "and mismatch retries (default: %(default)g)",
     )
+    add_settle_timeout_argument(parser)
     parser.add_argument("--log-file", type=Path, help="Path to log file")
     parser.add_argument(
         "--log-file-verbosity", type=int, help="Log file verbosity level"
@@ -335,6 +354,7 @@ def main():
     args = parser.parse_args()
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error("--timeout must be a positive finite number")
+    check_settle_timeout(parser, args.settle_timeout)
 
     setup_logging(args.verbose, args.log_file, args.log_file_verbosity)
 
@@ -360,6 +380,7 @@ def main():
         live=live,
         github=github,
         timeout=args.timeout,
+        settle_timeout=args.settle_timeout,
     )
 
 
