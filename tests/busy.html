@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<body aria-busy="true">
+<div id="box" style="width:200px;height:200px;background:red"></div>
+<script>
+  // still changing well after load, as a page that lays itself out does
+  setTimeout(function () {
+    document.getElementById("box").style.background = "green";
+    document.body.removeAttribute("aria-busy");
+  }, 1500);
+</script>
+</body>
+</html>

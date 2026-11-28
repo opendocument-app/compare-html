@@ -49,3 +49,15 @@ def test_html_render_diff():
         assert diff.getbbox() is not None
     finally:
         browser.quit()
+
+
+@pytest.mark.parametrize("driver", ["chrome", "firefox"])
+@pytest.mark.parametrize("page", ["busy.html", "animated.html"])
+def test_screenshot_waits_for_the_page_to_settle(driver, page):
+    here = Path(__file__).parent
+    browser = get_browser(driver)
+    try:
+        diff, _ = html_render_diff(here / page, here / "settled.html", browser)
+        assert diff.getbbox() is None
+    finally:
+        browser.quit()

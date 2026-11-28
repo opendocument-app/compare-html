@@ -10,6 +10,19 @@ Provides various entry points to run:
 
 Used for regression testing in https://github.com/opendocument-app/OpenDocument.core.
 
+## When a screenshot is taken
+
+A page is screenshotted once it has stopped changing:
+
+- the document has loaded and its web fonts have arrived
+- no element carries `aria-busy="true"`, the WAI-ARIA way for a page that keeps
+  laying itself out after load to say it is not done yet
+- finite animations, such as a fade-in, have finished; an infinite one is left
+  running
+- two frames have been painted since
+
+Waiting stops after 10 seconds, and the page is screenshotted as it is then.
+
 ## Browser timeouts in the CLI
 
 `compare-html --timeout 120` limits each browser comparison to 120 seconds,
