@@ -2,7 +2,14 @@ import pytest
 from pathlib import Path
 import shutil
 
-from htmlcmp.html_render_diff import to_url, get_browser, html_render_diff
+import time
+
+from htmlcmp.html_render_diff import (
+    to_url,
+    get_browser,
+    html_render_diff,
+    screenshot,
+)
 
 
 def test_to_url():
@@ -59,5 +66,16 @@ def test_screenshot_waits_for_the_page_to_settle(driver, page):
     try:
         diff, _ = html_render_diff(here / page, here / "settled.html", browser)
         assert diff.getbbox() is None
+    finally:
+        browser.quit()
+
+
+@pytest.mark.parametrize("driver", ["chrome", "firefox"])
+def test_screenshot_leaves_an_infinite_animation_running(driver):
+    browser = get_browser(driver)
+    try:
+        started = time.monotonic()
+        screenshot(browser, to_url(Path(__file__).parent / "spinning.html"))
+        assert time.monotonic() - started < 5
     finally:
         browser.quit()
