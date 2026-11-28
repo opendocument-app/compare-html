@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import psutil
 
+from htmlcmp import defaults
 from htmlcmp.common import compare_files
 from htmlcmp.html_render_diff import get_browser
 
@@ -42,7 +43,7 @@ def _compare_loop(connection, driver, timeout):
 
 
 class ComparisonWorker:
-    def __init__(self, driver, timeout=120.0):
+    def __init__(self, driver, timeout=defaults.TIMEOUT):
         self.driver = driver
         self.timeout = timeout
         self._process = None
@@ -120,7 +121,7 @@ class ComparisonWorker:
 
 
 class ComparisonExecutor(ThreadPoolExecutor):
-    def __init__(self, max_workers, driver, timeout=120.0):
+    def __init__(self, max_workers, driver, timeout=defaults.TIMEOUT):
         self._driver = driver
         self._timeout = timeout
         self._local = threading.local()

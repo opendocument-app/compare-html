@@ -15,8 +15,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 
-#: How long `settle` waits for the page by default, in seconds.
-SETTLE_TIMEOUT = 10.0
+from htmlcmp import defaults
 
 
 def to_url(path: str | Path) -> str:
@@ -34,7 +33,7 @@ def screenshot(
     browser: webdriver.Remote,
     url: str,
     settling_time: float = 0,
-    settle_timeout: float = SETTLE_TIMEOUT,
+    settle_timeout: float = defaults.SETTLE_TIMEOUT,
 ) -> Image.Image:
     if not isinstance(url, str):
         raise TypeError(f"Expected str, got {type(url)}")
@@ -116,7 +115,7 @@ const animations = () =>
 def settle(
     browser: webdriver.Remote,
     settling_time: float = 0,
-    settle_timeout: float = SETTLE_TIMEOUT,
+    settle_timeout: float = defaults.SETTLE_TIMEOUT,
 ) -> None:
     """Waits until the page has finished painting what it loaded.
 
@@ -144,9 +143,9 @@ def add_settle_timeout_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--settle-timeout",
         type=float,
-        default=SETTLE_TIMEOUT,
+        default=defaults.SETTLE_TIMEOUT,
         help="Seconds to wait for a page to settle before its screenshot is "
-        f"taken as it is (default: {SETTLE_TIMEOUT:g})",
+        "taken as it is (default: %(default)g)",
     )
 
 
@@ -170,8 +169,8 @@ def content_bottom(image: Image.Image) -> int:
 
 def get_browser(
     driver: str,
-    max_width: int = 1000,
-    max_height: int = 10000,
+    max_width: int = defaults.MAX_WIDTH,
+    max_height: int = defaults.MAX_HEIGHT,
     *,
     timeout: float | None = None,
 ) -> webdriver.Remote:
@@ -208,7 +207,7 @@ def html_render_diff(
     b: str | Path,
     browser: webdriver.Remote,
     browser_b: webdriver.Remote = None,
-    settle_timeout: float = SETTLE_TIMEOUT,
+    settle_timeout: float = defaults.SETTLE_TIMEOUT,
 ) -> tuple[Image.Image, tuple[Image.Image, Image.Image]]:
     if not isinstance(a, (str, Path)) or not isinstance(b, (str, Path)):
         raise TypeError("Both a and b must be str or Path instances")
@@ -243,9 +242,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("a", type=Path, help="Path to the first HTML file")
     parser.add_argument("b", type=Path, help="Path to the second HTML file")
-    parser.add_argument("--driver", choices=["chrome", "firefox"], default="firefox")
-    parser.add_argument("--max-width", type=int, default=1000)
-    parser.add_argument("--max-height", type=int, default=10000)
+    parser.add_argument(
+        "--driver", choices=["chrome", "firefox"], default=defaults.DRIVER
+    )
+    parser.add_argument("--max-width", type=int, default=defaults.MAX_WIDTH)
+    parser.add_argument("--max-height", type=int, default=defaults.MAX_HEIGHT)
     add_settle_timeout_argument(parser)
     args = parser.parse_args()
     check_settle_timeout(parser, args.settle_timeout)

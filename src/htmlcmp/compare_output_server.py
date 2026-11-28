@@ -19,13 +19,13 @@ import watchdog.events
 
 from PIL import Image
 
+from htmlcmp import defaults
 from htmlcmp.common import (
     comparable_file,
     compare_files,
     setup_logging,
 )
 from htmlcmp.html_render_diff import (
-    SETTLE_TIMEOUT,
     add_settle_timeout_argument,
     check_settle_timeout,
     get_browser,
@@ -39,7 +39,7 @@ class Config:
     path_a: Path = None
     path_b: Path = None
     driver: str = None
-    settle_timeout: float = SETTLE_TIMEOUT
+    settle_timeout: float = defaults.SETTLE_TIMEOUT
     observer = None
     comparator = None
     browser = None
@@ -717,7 +717,7 @@ def main():
     parser.add_argument("ref", type=Path, help="Path to the reference directory")
     parser.add_argument("mon", type=Path, help="Path to the monitored directory")
     parser.add_argument("--driver", choices=["chrome", "firefox"])
-    parser.add_argument("--max-workers", type=int, default=1)
+    parser.add_argument("--max-workers", type=int, default=defaults.MAX_WORKERS)
     parser.add_argument("--compare", action="store_true")
     parser.add_argument(
         "--host",
