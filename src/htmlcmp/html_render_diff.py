@@ -4,6 +4,7 @@
 import sys
 import argparse
 import io
+import math
 import time
 from pathlib import Path
 
@@ -13,6 +14,10 @@ from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
+
+
+#: How long `settle` waits for the page by default, in seconds.
+SETTLE_TIMEOUT = 10.0
 
 
 def to_url(path: str | Path) -> str:
@@ -27,7 +32,10 @@ def to_url(path: str | Path) -> str:
 
 
 def screenshot(
-    browser: webdriver.Remote, url: str, settling_time: float = 0
+    browser: webdriver.Remote,
+    url: str,
+    settling_time: float = 0,
+    settle_timeout: float = SETTLE_TIMEOUT,
 ) -> Image.Image:
     if not isinstance(url, str):
         raise TypeError(f"Expected str, got {type(url)}")
@@ -47,7 +55,7 @@ def screenshot(
         lambda driver: driver.execute_script("return document.readyState") == "complete"
     )
 
-    settle(browser, settling_time)
+    settle(browser, settling_time, settle_timeout)
 
     png = browser.get_screenshot_as_png()
     return Image.open(io.BytesIO(png))
@@ -105,12 +113,12 @@ const animations = () =>
 })();
 """
 
-#: How long `settle` waits for the page, in seconds. The page gives up a second
-#: before WebDriver does, so the screenshot follows either way.
-_SETTLE_TIMEOUT = 10
 
-
-def settle(browser: webdriver.Remote, settling_time: float = 0) -> None:
+def settle(
+    browser: webdriver.Remote,
+    settling_time: float = 0,
+    settle_timeout: float = SETTLE_TIMEOUT,
+) -> None:
     """Waits until the page has finished painting what it loaded.
 
     A screenshot taken before that catches the page mid-render, which is what
@@ -120,15 +128,32 @@ def settle(browser: webdriver.Remote, settling_time: float = 0) -> None:
     if not isinstance(browser, webdriver.Remote):
         raise TypeError(f"Expected webdriver.Remote, got {type(browser)}")
 
-    browser.set_script_timeout(_SETTLE_TIMEOUT)
+    # WebDriver gets a second more than the page, so the page gives up first
+    # and the screenshot follows either way.
+    browser.set_script_timeout(settle_timeout + 1)
     try:
-        browser.execute_async_script(_SETTLE, (_SETTLE_TIMEOUT - 1) * 1000)
+        browser.execute_async_script(_SETTLE, settle_timeout * 1000)
     except WebDriverException:
         # an old driver without async scripts still gets the sleep below
         pass
 
     if settling_time:
         time.sleep(settling_time)
+
+
+def add_settle_timeout_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--settle-timeout",
+        type=float,
+        default=SETTLE_TIMEOUT,
+        help="Seconds to wait for a page to settle before its screenshot is "
+        f"taken as it is (default: {SETTLE_TIMEOUT:g})",
+    )
+
+
+def check_settle_timeout(parser: argparse.ArgumentParser, value: float) -> None:
+    if not math.isfinite(value) or value <= 0:
+        parser.error("--settle-timeout must be a positive finite number")
 
 
 def content_bottom(image: Image.Image) -> int:
@@ -184,6 +209,7 @@ def html_render_diff(
     b: str | Path,
     browser: webdriver.Remote,
     browser_b: webdriver.Remote = None,
+    settle_timeout: float = SETTLE_TIMEOUT,
 ) -> tuple[Image.Image, tuple[Image.Image, Image.Image]]:
     if not isinstance(a, (str, Path)) or not isinstance(b, (str, Path)):
         raise TypeError("Both a and b must be str or Path instances")
@@ -194,8 +220,12 @@ def html_render_diff(
     elif not isinstance(browser_b, webdriver.Remote):
         raise TypeError(f"Expected webdriver.Remote, got {type(browser_b)}")
 
-    image_a = screenshot(browser, to_url(a)).convert("RGB")
-    image_b = screenshot(browser_b, to_url(b)).convert("RGB")
+    image_a = screenshot(browser, to_url(a), settle_timeout=settle_timeout).convert(
+        "RGB"
+    )
+    image_b = screenshot(browser_b, to_url(b), settle_timeout=settle_timeout).convert(
+        "RGB"
+    )
 
     # The browser window is deliberately very tall so that long pages fit into
     # one screenshot, which leaves most shots mostly empty. That empty tail is
@@ -217,10 +247,14 @@ def main():
     parser.add_argument("--driver", choices=["chrome", "firefox"], default="firefox")
     parser.add_argument("--max-width", type=int, default=1000)
     parser.add_argument("--max-height", type=int, default=10000)
+    add_settle_timeout_argument(parser)
     args = parser.parse_args()
+    check_settle_timeout(parser, args.settle_timeout)
 
     browser = get_browser(args.driver, args.max_width, args.max_height)
-    diff, _ = html_render_diff(args.a, args.b, browser)
+    diff, _ = html_render_diff(
+        args.a, args.b, browser, settle_timeout=args.settle_timeout
+    )
     browser.quit()
     bounding_box = diff.getbbox()
 

@@ -23,6 +23,11 @@ from rich.progress import (
 
 from htmlcmp.common import comparable_file, setup_logging
 from htmlcmp.comparison_worker import ComparisonExecutor
+from htmlcmp.html_render_diff import (
+    SETTLE_TIMEOUT,
+    add_settle_timeout_argument,
+    check_settle_timeout,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -228,9 +233,12 @@ def run(
     live: bool,
     github: bool,
     timeout: float = 120.0,
+    settle_timeout: float = SETTLE_TIMEOUT,
 ) -> int:
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be a positive finite number")
+    if not math.isfinite(settle_timeout) or settle_timeout <= 0:
+        raise ValueError("settle_timeout must be a positive finite number")
     console.print(
         f"[bold]Comparing[/bold] {escape(str(a))} [dim]→[/dim] {escape(str(b))}"
     )
@@ -263,6 +271,7 @@ def run(
                     t.b,
                     diff_output=t.diff_output,
                     retries=t.retries,
+                    settle_timeout=settle_timeout,
                 ): t
                 for t in tasks
             }
@@ -328,6 +337,7 @@ def main():
         help="Deadline in seconds per browser comparison, including startup "
         "and mismatch retries (default: 120)",
     )
+    add_settle_timeout_argument(parser)
     parser.add_argument("--log-file", type=Path, help="Path to log file")
     parser.add_argument(
         "--log-file-verbosity", type=int, help="Log file verbosity level"
@@ -335,6 +345,7 @@ def main():
     args = parser.parse_args()
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error("--timeout must be a positive finite number")
+    check_settle_timeout(parser, args.settle_timeout)
 
     setup_logging(args.verbose, args.log_file, args.log_file_verbosity)
 
@@ -360,6 +371,7 @@ def main():
         live=live,
         github=github,
         timeout=args.timeout,
+        settle_timeout=args.settle_timeout,
     )
 
 

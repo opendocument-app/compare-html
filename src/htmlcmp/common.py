@@ -4,7 +4,7 @@ import logging
 import filecmp
 from pathlib import Path
 
-from htmlcmp.html_render_diff import get_browser, html_render_diff
+from htmlcmp.html_render_diff import SETTLE_TIMEOUT, get_browser, html_render_diff
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,12 @@ def compare_json(a: Path, b: Path) -> bool:
 
 
 def compare_html(
-    a: Path, b: Path, browser=None, diff_output: Path = None, retries: int = 1
+    a: Path,
+    b: Path,
+    browser=None,
+    diff_output: Path = None,
+    retries: int = 1,
+    settle_timeout: float = SETTLE_TIMEOUT,
 ) -> bool:
     """Whether `a` and `b` render to the same pixels.
 
@@ -64,7 +69,9 @@ def compare_html(
         browser = get_browser("firefox")
 
     for attempt in range(retries + 1):
-        diff, (image_a, image_b) = html_render_diff(a, b, browser=browser)
+        diff, (image_a, image_b) = html_render_diff(
+            a, b, browser=browser, settle_timeout=settle_timeout
+        )
         if diff.getbbox() is None:
             return True
         logger.debug(
