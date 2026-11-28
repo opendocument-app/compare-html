@@ -8,13 +8,12 @@ ENV GECKODRIVER_VERSION="0.36.0"
 
 ENV INSTALL="apt-get install -y --no-install-recommends"
 
-RUN apt-get update
-
-# install download and unpack utilities
-RUN $INSTALL wget ca-certificates xz-utils bzip2 unzip
-
-# firefox setup
-RUN $INSTALL libgtk-3-0t64 libasound2t64 libx11-xcb1
+# Every install refreshes the package index in its own layer: a cached index
+# goes stale once the archive moves on, and its downloads then 404.
+RUN apt-get update && \
+    $INSTALL wget ca-certificates xz-utils bzip2 unzip \
+      libgtk-3-0t64 libasound2t64 libx11-xcb1 python3 python3-pip && \
+    pip config set global.break-system-packages true
 
 RUN case "$TARGETARCH" in \
       amd64) FFARCH=linux-x86_64 ;; \
@@ -46,6 +45,7 @@ RUN geckodriver --version
 # use --driver firefox, the default, on arm64)
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
       wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
+      apt-get update && \
       $INSTALL ./google-chrome-stable_current_amd64.deb && \
       rm google-chrome-stable_current_amd64.deb && \
       google-chrome --version ; \
@@ -55,6 +55,4 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
 
 # install python dependencies
 COPY . /compare-html
-RUN $INSTALL python3 python3-pip && \
-    pip config set global.break-system-packages true && \
-    pip install /compare-html
+RUN pip install /compare-html
