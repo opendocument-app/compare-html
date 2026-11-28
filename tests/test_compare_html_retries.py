@@ -25,7 +25,7 @@ def images(same: bool):
 def renderer(pattern, calls):
     """Stands in for `html_render_diff`, answering `pattern` in turn."""
 
-    def render(a, b, browser=None):
+    def render(a, b, browser=None, settle_timeout=None):
         calls.append((a, b))
         return images(pattern[min(len(calls) - 1, len(pattern) - 1)])
 

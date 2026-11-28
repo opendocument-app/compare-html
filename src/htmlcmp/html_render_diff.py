@@ -15,7 +15,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 
-
 #: How long `settle` waits for the page by default, in seconds.
 SETTLE_TIMEOUT = 10.0
 

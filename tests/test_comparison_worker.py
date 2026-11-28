@@ -168,11 +168,12 @@ def test_startup_failure_is_reported_per_file(tmp_path):
         worker.close()
 
 
+@pytest.mark.parametrize("flag", ["--timeout", "--settle-timeout"])
 @pytest.mark.parametrize("timeout", ["0", "-1", "nan", "inf"])
-def test_cli_rejects_invalid_deadline(monkeypatch, timeout):
+def test_cli_rejects_invalid_deadline(monkeypatch, flag, timeout):
     from htmlcmp.compare_output_cli import main
 
-    monkeypatch.setattr(sys, "argv", ["compare-html", "a", "b", "--timeout", timeout])
+    monkeypatch.setattr(sys, "argv", ["compare-html", "a", "b", flag, timeout])
     with pytest.raises(SystemExit) as exc:
         main()
     assert exc.value.code == 2
