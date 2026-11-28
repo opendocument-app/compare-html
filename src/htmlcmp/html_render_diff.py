@@ -53,16 +53,61 @@ def screenshot(
     return Image.open(io.BytesIO(png))
 
 
-#: Waits for the fonts and then for two frames, and answers when both are done.
-#: `readyState` does not cover a web font: the load event fires while the face
-#: is still arriving, and the text is laid out again once it lands. Two frames
-#: then say a paint has happened rather than merely been asked for.
+#: Waits until the page has stopped changing, then for two frames, and answers
+#: when that is done or the deadline passes.
+#:
+#: - `readyState` does not cover a web font: the load event fires while the face
+#:   is still arriving, and the text is laid out again once it lands.
+#: - A page that keeps laying itself out after load marks what is still changing
+#:   with `aria-busy="true"` (WAI-ARIA), and clears it once that is done.
+#: - A finite animation, such as a fade-in, is waited out; an infinite one never
+#:   ends, so it is left running.
+#:
+#: Two frames then say a paint has happened rather than merely been asked for.
+#: The checks repeat until one round finds nothing to wait for, since finishing
+#: one kind of work can start another.
 _SETTLE = """
 const done = arguments[arguments.length - 1];
-const frames = () =>
-  requestAnimationFrame(() => requestAnimationFrame(() => done(true)));
-(document.fonts ? document.fonts.ready : Promise.resolve()).then(frames, frames);
+const deadline = performance.now() + arguments[0];
+const left = () => Math.max(0, deadline - performance.now());
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+const busy = () => document.querySelector('[aria-busy="true"]') !== null;
+const animations = () =>
+  document.getAnimations
+    ? document.getAnimations().filter((animation) => {
+        const timing = animation.effect && animation.effect.getComputedTiming();
+        return (
+          animation.playState === "running" &&
+          timing !== null &&
+          timing.endTime !== Infinity
+        );
+      })
+    : [];
+(async () => {
+  if (document.fonts) {
+    await Promise.race([document.fonts.ready.catch(() => {}), sleep(left())]);
+  }
+  for (;;) {
+    while (busy() && left() > 0) await sleep(50);
+    const running = animations();
+    if (running.length) {
+      await Promise.race([
+        Promise.all(running.map((a) => a.finished.catch(() => {}))),
+        sleep(left()),
+      ]);
+    }
+    await frame();
+    await frame();
+    if (left() === 0 || (!busy() && animations().length === 0)) break;
+  }
+  done(true);
+})();
 """
+
+#: How long `settle` waits for the page, in seconds. The page gives up a second
+#: before WebDriver does, so the screenshot follows either way.
+_SETTLE_TIMEOUT = 10
 
 
 def settle(browser: webdriver.Remote, settling_time: float = 0) -> None:
@@ -70,14 +115,14 @@ def settle(browser: webdriver.Remote, settling_time: float = 0) -> None:
 
     A screenshot taken before that catches the page mid-render, which is what
     makes an otherwise identical pair compare as different from one run to the
-    next.
+    next. A page still busy at the deadline is screenshotted as it is.
     """
     if not isinstance(browser, webdriver.Remote):
         raise TypeError(f"Expected webdriver.Remote, got {type(browser)}")
 
-    browser.set_script_timeout(10)
+    browser.set_script_timeout(_SETTLE_TIMEOUT)
     try:
-        browser.execute_async_script(_SETTLE)
+        browser.execute_async_script(_SETTLE, (_SETTLE_TIMEOUT - 1) * 1000)
     except WebDriverException:
         # an old driver without async scripts still gets the sleep below
         pass
